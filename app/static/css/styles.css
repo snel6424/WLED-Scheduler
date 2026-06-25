@@ -1,0 +1,914 @@
+/* WLED Scheduler — design system
+   ================================
+   Tokens below are extracted from a real mockup (a "Schedules" list
+   screen), not guessed. Warm near-black background, one vivid
+   indigo-violet accent for everything interactive, amber reserved
+   specifically for sunrise/sunset, soft large-radius shapes
+   throughout, and a single consistent rounded sans for all text
+   including time values, no monospace anywhere, that was a
+   deliberate choice in an earlier draft of this file but the mockup
+   doesn't use it, so it's gone.
+*/
+
+:root {
+  /* Color */
+  --bg: #14131c;
+  --surface: #1e1c28;
+  --surface-raised: #262432;
+  --border: #2c2a38;
+  --text: #f5f3f7;
+  --text-muted: #93909e;
+  --accent: #6c63ff;
+  --accent-strong: #8079ff;
+  --accent-wash: rgba(108, 99, 255, 0.14);
+  --amber: #e8a23d;
+  --amber-wash: rgba(232, 162, 61, 0.14);
+  --amber-deep: #3d2e12;
+  --success: #4caf7d;
+  --danger: #f0584f;
+  --danger-wash: rgba(240, 88, 79, 0.14);
+  --toggle-off: #3a3845;
+
+  /* Type: one consistent rounded system sans, no monospace */
+  --font-body: -apple-system, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+
+  /* Scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+  --radius: 20px;
+  --radius-sm: 14px;
+  --radius-pill: 999px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  /* Fallback only; api.js measures the real rendered tab bar height on
+     load and overwrites this, since guessing a static value here was
+     exactly what caused the Run now/Delete buttons to sit partly
+     behind the tab bar on the schedule form. */
+  --tabbar-height: 76px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--space-2);
+}
+
+h1 {
+  font-size: 2rem;
+}
+h2 {
+  font-size: 1.1rem;
+}
+h3 {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+p {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+}
+
+a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+}
+
+/* Several components below set `display: flex` directly on a class
+   (.input-row, .row, .schedule-row, etc). Author stylesheets beat the
+   browser's default `[hidden] { display: none }` rule at equal
+   specificity, which silently breaks the hidden attribute on any
+   element that has both. This makes [hidden] win unconditionally,
+   regardless of what else is applied to the same element. */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- App shell ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+  /* Leaves room for the fixed tab bar so content never sits behind
+     it. Was previously a static var(--space-8) guess, which was 16px
+     short of the tab bar's actual rendered height on at least one
+     real page; --tabbar-height is measured in JS instead. */
+  padding-bottom: calc(var(--tabbar-height) + var(--space-4) + env(safe-area-inset-bottom, 0px));
+}
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar__link {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+.tabbar__link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.tabbar__link svg {
+  margin: 0 auto var(--space-1);
+  stroke: currentColor;
+}
+.tabbar__link.is-active {
+  color: var(--accent-strong);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+  gap: var(--space-3);
+}
+.page-header p {
+  margin: 0;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn--primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.btn--danger {
+  color: var(--danger);
+}
+.btn--danger:hover {
+  border-color: var(--danger);
+}
+
+.btn--small {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8rem;
+}
+
+.btn--fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow);
+}
+.btn--fab:hover {
+  background: var(--accent-strong);
+}
+
+/* ---------- Cards / panels ---------- */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: var(--space-1);
+}
+
+.row__meta {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.row__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ---------- Empty states ---------- */
+
+.empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+.empty h2 {
+  color: var(--text);
+}
+
+/* ---------- Forms ---------- */
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: var(--space-2);
+}
+
+.field__hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="time"],
+select,
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.95rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+input:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.field-row {
+  display: flex;
+  gap: var(--space-3);
+}
+.field-row > .field {
+  flex: 1;
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+legend {
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0 var(--space-2);
+}
+
+/* Segmented control: trigger type, action type */
+.segmented {
+  display: flex;
+  gap: var(--space-2);
+}
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented label {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.segmented input:checked + label {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-wash);
+}
+.segmented input:disabled + label {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Day-of-week toggles */
+.day-toggles {
+  display: flex;
+  gap: var(--space-2);
+}
+.day-toggles input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.day-toggles label {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.day-toggles input:checked + label {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+/* Toggle switch: enabled/disabled */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.switch__track {
+  position: absolute;
+  inset: 0;
+  background: var(--toggle-off);
+  border-radius: var(--radius-pill);
+  transition: background-color 0.15s;
+  pointer-events: none;
+}
+.switch__track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.switch input:checked + .switch__track {
+  background: var(--accent);
+}
+.switch input:checked + .switch__track::after {
+  transform: translateX(20px);
+}
+.switch input:disabled + .switch__track {
+  opacity: 0.5;
+}
+
+/* ---------- Schedule-specific components ---------- */
+
+.icon-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.icon-avatar--moon {
+  background: #2b2640;
+  color: #c9c3f5;
+}
+.icon-avatar--sun {
+  background: var(--amber-deep);
+  color: var(--amber);
+}
+.icon-avatar--danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.schedule-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.schedule-row__body {
+  flex: 1;
+  min-width: 0;
+}
+.schedule-row__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.schedule-row__time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 700;
+  margin-top: var(--space-1);
+}
+.schedule-row__time svg {
+  width: 16px;
+  height: 16px;
+}
+.schedule-row__time--time {
+  color: var(--accent-strong);
+}
+.schedule-row__time--sun {
+  color: var(--amber);
+}
+.schedule-row__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-3);
+}
+.schedule-row__chevron {
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+}
+.tag svg {
+  width: 14px;
+  height: 14px;
+}
+
+.filter-row {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-1);
+  /* Fades the trailing edge so a cut-off pill reads as "scroll for
+     more" rather than looking clipped/broken. Harmless when nothing
+     overflows; the fade just sits at the true end of the content. */
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
+
+/* Suppress the native up/down spinner on number inputs (latitude,
+   longitude, offset minutes): it renders inconsistently across
+   browsers and was overlapping this app's own input styling. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+.filter-pill {
+  flex-shrink: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: none;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+.filter-pill.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.info-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+}
+.info-card__icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.info-card__decoration {
+  color: var(--accent);
+  opacity: 0.6;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.info-card h3 {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.95rem;
+  margin-bottom: var(--space-1);
+}
+.info-card p {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* ---------- Badges ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+}
+.badge--success {
+  color: var(--success);
+  background: rgba(76, 175, 125, 0.14);
+}
+.badge--danger {
+  color: var(--danger);
+  background: var(--danger-wash);
+}
+.badge--muted {
+  color: var(--text-muted);
+  background: var(--surface-raised);
+}
+
+/* ---------- Toasts ---------- */
+
+.toast-region {
+  position: fixed;
+  bottom: calc(var(--tabbar-height) + var(--space-4) + env(safe-area-inset-bottom, 0px));
+  left: var(--space-4);
+  right: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 100;
+  align-items: center;
+}
+.toast {
+  background: var(--surface-raised);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  max-width: 320px;
+}
+.toast--error {
+  border-left-color: var(--danger);
+}
+
+/* ---------- Misc utility ---------- */
+
+.muted {
+  color: var(--text-muted);
+}
+.stack > * + * {
+  margin-top: var(--space-3);
+}
+.swatch {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  vertical-align: -0.15em;
+}
+
+/* ---------- Form header (Create/Edit Schedule) ---------- */
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+.form-header__close {
+  color: var(--text-muted);
+  display: flex;
+}
+.form-header__close:hover {
+  color: var(--text);
+}
+.form-header h1 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.form-header__save {
+  font: inherit;
+  font-weight: 700;
+  color: var(--accent-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+}
+.form-header__save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Numbered form sections ---------- */
+
+.form-section {
+  margin-bottom: var(--space-6);
+}
+.form-section__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--accent);
+}
+.form-section__header h2 {
+  font-size: 1rem;
+  color: var(--text);
+  margin: 0;
+}
+.form-section__header p {
+  font-size: 0.85rem;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+.form-section__header svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* ---------- Icon-prefixed input rows ---------- */
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+}
+.input-row + .input-row {
+  margin-top: 1px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.input-row:has(+ .input-row) {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.input-row__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.input-row__body {
+  flex: 1;
+  min-width: 0;
+}
+.input-row__body label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.input-row__body input,
+.input-row__body select {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.input-row__body input:focus,
+.input-row__body select:focus {
+  outline: none;
+}
+.input-row__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.input-row--readonly .input-row__value {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+.input-row__chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.input-row__clear {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* Day toggle checkmark, layered on top of the existing component */
+.day-toggles label {
+  position: relative;
+}
+.day-toggles input:checked + label::after {
+  content: "\2713";
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Range slider (brightness) */
+input[type="range"] {
+  width: 100%;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--toggle-off);
+  margin: var(--space-2) 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+/* Color swatch input */
+input[type="color"] {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.form-actions {
+  margin-top: var(--space-6);
+  display: flex;
+  gap: var(--space-3);
+}
+.form-actions .btn {
+  flex: 1;
+}

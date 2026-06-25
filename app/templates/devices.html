@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Devices · WLED Scheduler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Devices</h1>
+    <p>Manage your lights and controllers.</p>
+  </div>
+  <button class="btn--fab" id="show-add-device" aria-label="Add device">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</div>
+
+<div class="card" id="stats-row" style="display:flex; margin-bottom: 1.5rem;">
+  <div style="flex:1;">
+    <div class="row__meta">Total Devices</div>
+    <div style="font-size:1.5rem; font-weight:800;" id="stat-total">0</div>
+  </div>
+  <div style="flex:1;">
+    <div class="row__meta">Online</div>
+    <div style="font-size:1.5rem; font-weight:800; color: var(--success);" id="stat-online">0</div>
+  </div>
+  <div style="flex:1;">
+    <div class="row__meta">Offline</div>
+    <div style="font-size:1.5rem; font-weight:800; color: var(--danger);" id="stat-offline">0</div>
+  </div>
+</div>
+
+<div class="card" id="add-device-card" hidden style="margin-bottom: 1.5rem;">
+  <h2>Add a device</h2>
+  <p>Enter the IP address or hostname of a WLED device already set up on your network.</p>
+  <form id="add-device-form">
+    <div class="field-row">
+      <div class="field">
+        <label for="device-name">Name</label>
+        <input type="text" id="device-name" required placeholder="Porch">
+      </div>
+      <div class="field">
+        <label for="device-host">IP address or hostname</label>
+        <input type="text" id="device-host" required placeholder="192.168.1.50">
+      </div>
+    </div>
+    <div class="field">
+      <label for="device-room">Room (optional)</label>
+      <input type="text" id="device-room" placeholder="Backyard">
+    </div>
+    <button type="submit" class="btn btn--primary">Add device</button>
+    <button type="button" class="btn" id="cancel-add-device">Cancel</button>
+  </form>
+</div>
+
+<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 0.75rem;">
+  <h3 style="margin:0;">My Devices</h3>
+  <select id="sort-select" style="width:auto; padding: 4px 8px; font-size: 0.8rem;">
+    <option value="name">Sort: Name</option>
+    <option value="status">Sort: Status</option>
+  </select>
+</div>
+
+<div class="list" id="device-list"></div>
+
+<div class="info-card" id="systems-card" style="margin-top: 1.5rem;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/icons.js') }}"></script>
+<script src="{{ url_for('static', path='js/devices.js') }}"></script>
+{% endblock %}

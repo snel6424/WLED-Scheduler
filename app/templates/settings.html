@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Settings · WLED Scheduler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Settings</h1>
+    <p>Configure your location and behavior.</p>
+  </div>
+</div>
+
+<h3>Location</h3>
+<p class="field__hint" style="margin: -0.25rem 0 1rem;">Used to calculate sunrise and sunset times for your schedules.</p>
+
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label for="latitude">Latitude</label>
+    <input type="number" id="latitude" step="0.0001" placeholder="e.g. 35.4676">
+  </div>
+</div>
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label for="longitude">Longitude</label>
+    <input type="number" id="longitude" step="0.0001" placeholder="e.g. -97.5164">
+  </div>
+</div>
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label for="timezone">Time zone</label>
+    <select id="timezone"></select>
+  </div>
+</div>
+
+<button type="button" class="btn" id="use-my-location-btn" style="margin-top: 0.75rem; width: 100%;">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 4px;"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+  Use my location
+</button>
+<p class="field__hint" style="margin-top: 0.5rem;">
+  Sets latitude, longitude, and time zone together. Only works if this page is open over HTTPS or
+  on the same machine (localhost). Most browsers block location access on a plain local network
+  address, which is how this app is usually reached, so manual entry above is the reliable option.
+</p>
+
+<h3 style="margin-top: 2rem;">Scheduling</h3>
+
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label for="catch-up-toggle" style="margin-bottom: 2px;">Catch up missed schedules</label>
+    <p class="field__hint" style="margin: 0;">If the app was offline when a schedule should have fired, run it late instead of skipping to the next time.</p>
+  </div>
+  <label class="switch" aria-label="Catch up missed schedules">
+    <input type="checkbox" id="catch-up-toggle">
+    <span class="switch__track"></span>
+  </label>
+</div>
+
+<h3 style="margin-top: 2rem;">About</h3>
+
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label style="margin-bottom: 2px;">WLED Scheduler</label>
+    <div class="muted" style="font-size: 0.85rem;">Version {{ app_version }} · MIT licensed</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/settings.js') }}"></script>
+{% endblock %}

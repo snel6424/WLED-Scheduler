@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Device · WLED Scheduler{% endblock %}
+
+{% block content %}
+<script>const DEVICE_ID = {{ device_id | tojson }};</script>
+
+<div style="margin-bottom: 1.5rem;">
+  <a href="/devices" style="display:flex; align-items:center; gap: 0.25rem; color: var(--accent-strong); font-weight: 700;">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+    Devices
+  </a>
+</div>
+
+<div style="display:flex; align-items:center; gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="icon-avatar icon-avatar--moon" style="width:64px; height:64px;">
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+  </div>
+  <div>
+    <h1 id="device-name" style="margin-bottom: 2px;">&nbsp;</h1>
+    <div class="muted" id="device-room" style="font-size: 0.9rem;"></div>
+  </div>
+</div>
+
+<div class="card" style="display:flex; margin-bottom: 1.5rem;">
+  <div style="flex:1;">
+    <div class="row__meta">Status</div>
+    <div id="device-status" style="font-weight:700; margin: 2px 0;">—</div>
+    <div class="muted" id="device-status-detail" style="font-size: 0.8rem;"></div>
+  </div>
+  <div style="flex:1;">
+    <div class="row__meta">Signal</div>
+    <div id="device-signal" style="font-weight:700; margin: 2px 0;">—</div>
+  </div>
+</div>
+
+<div id="edit-card" class="card" hidden style="margin-bottom: 1.5rem;">
+  <h2>Edit device</h2>
+  <div class="field">
+    <label for="edit-name">Name</label>
+    <input type="text" id="edit-name">
+  </div>
+  <div class="field">
+    <label for="edit-room">Room</label>
+    <input type="text" id="edit-room" placeholder="e.g. Backyard">
+  </div>
+  <button class="btn btn--primary" id="save-edit-btn">Save</button>
+  <button class="btn" id="cancel-edit-btn" type="button">Cancel</button>
+</div>
+
+<div class="list" style="margin-bottom: 1.5rem;">
+  <button type="button" class="input-row" id="device-info-toggle" style="width:100%; text-align:left; cursor:pointer; border:none;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label style="margin-bottom:0;">Device Information</label>
+      <div class="muted" style="font-size:0.85rem;">Model, firmware, and capabilities</div>
+    </div>
+    <span class="input-row__chevron" id="device-info-chevron">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </span>
+  </button>
+  <div id="device-info-detail" class="card" hidden style="margin-top: 0.5rem;"></div>
+
+  <button type="button" class="input-row" id="edit-name-row" style="width:100%; text-align:left; cursor:pointer; border:none; margin-top: 0.75rem;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label style="margin-bottom:0;">Edit Device Name &amp; Room</label>
+      <div class="muted" style="font-size:0.85rem;" id="edit-row-subtitle"></div>
+    </div>
+    <span class="input-row__chevron">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </span>
+  </button>
+
+  <a href="#" id="schedules-row" class="input-row" style="text-decoration:none; color:inherit; margin-top: 0.75rem;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label style="margin-bottom:0;">Schedules</label>
+      <div class="muted" style="font-size:0.85rem;" id="schedules-count">—</div>
+    </div>
+    <span class="input-row__chevron">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </span>
+  </a>
+
+  <a href="#" id="history-row" class="input-row" style="text-decoration:none; color:inherit; margin-top: 0.75rem;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label style="margin-bottom:0;">Activity History</label>
+      <div class="muted" style="font-size:0.85rem;">View past actions for this device</div>
+    </div>
+    <span class="input-row__chevron">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </span>
+  </a>
+</div>
+
+<button type="button" class="input-row btn--danger" id="remove-device-btn" style="width:100%; text-align:left; cursor:pointer; border:none; background: var(--danger-wash);">
+  <div class="input-row__icon" style="background: none; color: var(--danger);">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label style="margin-bottom:0; color: var(--danger);">Remove Device</label>
+    <div class="muted" style="font-size:0.85rem;">Remove this device and its schedules</div>
+  </div>
+</button>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/icons.js') }}"></script>
+<script src="{{ url_for('static', path='js/device_detail.js') }}"></script>
+{% endblock %}

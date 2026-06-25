@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        # The one wall-clock-sleeping test (test_real_background_loop_fires_a_due_schedule_on_its_own)
+        # is excluded here, not because it's flaky, but because tying CI runtime to a real sleep
+        # isn't worth it; it's still part of the suite for local runs (plain `pytest`).
+        run: pytest -m "not slow"

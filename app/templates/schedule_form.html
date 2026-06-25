@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{% if schedule_id %}Edit{% else %}Create{% endif %} Schedule{% endblock %}
+
+{% block content %}
+<div class="form-header">
+  <a href="/schedules" class="form-header__close" aria-label="Cancel">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+  </a>
+  <h1>{% if schedule_id %}Edit Schedule{% else %}Create Schedule{% endif %}</h1>
+  <button class="form-header__save" id="save-btn" type="submit" form="schedule-form">Save</button>
+</div>
+
+<form id="schedule-form">
+  <div class="input-row" style="margin-bottom: 1.5rem;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label for="name">Schedule name</label>
+      <input type="text" id="name" required placeholder="Evening Lights">
+    </div>
+  </div>
+
+  <!-- 1. When -->
+  <section class="form-section">
+    <div class="form-section__header">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <div>
+        <h2>1. When</h2>
+        <p>Choose when this schedule runs</p>
+      </div>
+    </div>
+
+    <div class="segmented" style="margin-bottom: 1rem;">
+      <input type="radio" name="trigger_type" value="time" id="trigger-time" checked>
+      <label for="trigger-time">Time</label>
+      <input type="radio" name="trigger_type" value="sunrise" id="trigger-sunrise">
+      <label for="trigger-sunrise">Sunrise</label>
+      <input type="radio" name="trigger_type" value="sunset" id="trigger-sunset">
+      <label for="trigger-sunset">Sunset</label>
+    </div>
+    <p class="field__hint" id="location-hint" hidden>
+      Sunrise and sunset triggers need a location. Set one in Settings to use them.
+    </p>
+
+    <div id="time-field" class="input-row">
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label for="time-of-day">Time</label>
+        <input type="time" id="time-of-day" value="19:00">
+      </div>
+    </div>
+
+    <div id="offset-field" class="input-row" hidden>
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M3 17h18M5 9l1.2 1.2M19 9l-1.2 1.2"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label for="offset-minutes">Offset (minutes, can be negative)</label>
+        <input type="number" id="offset-minutes" value="0" step="5">
+      </div>
+    </div>
+
+    <div class="input-row input-row--readonly" style="margin-top: 1px;">
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label>Time zone</label>
+        <div class="input-row__value" id="timezone-display">Not set</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Repeat -->
+  <section class="form-section">
+    <div class="form-section__header">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      <div>
+        <h2>2. Repeat</h2>
+        <p>Choose which days this schedule runs</p>
+      </div>
+    </div>
+    <div class="day-toggles" id="day-toggles">
+      <input type="checkbox" id="day-0" data-bit="0"><label for="day-0">Mon</label>
+      <input type="checkbox" id="day-1" data-bit="1"><label for="day-1">Tue</label>
+      <input type="checkbox" id="day-2" data-bit="2"><label for="day-2">Wed</label>
+      <input type="checkbox" id="day-3" data-bit="3"><label for="day-3">Thu</label>
+      <input type="checkbox" id="day-4" data-bit="4"><label for="day-4">Fri</label>
+      <input type="checkbox" id="day-5" data-bit="5"><label for="day-5">Sat</label>
+      <input type="checkbox" id="day-6" data-bit="6"><label for="day-6">Sun</label>
+    </div>
+  </section>
+
+  <!-- 3. Action -->
+  <section class="form-section">
+    <div class="form-section__header">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg>
+      <div>
+        <h2>3. Action</h2>
+        <p>Choose what your lights will do</p>
+      </div>
+    </div>
+
+    <div class="input-row" style="margin-bottom: 1rem;">
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label for="device-select">Device</label>
+        <select id="device-select" required></select>
+      </div>
+    </div>
+
+    <div class="segmented" style="margin-bottom: 1rem;">
+      <input type="radio" name="action_mode" value="state" id="action-state" checked>
+      <label for="action-state">Custom</label>
+      <input type="radio" name="action_mode" value="preset" id="action-preset">
+      <label for="action-preset">Saved preset</label>
+    </div>
+
+    <div id="preset-field" class="input-row" hidden>
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label for="preset-select">Preset</label>
+        <select id="preset-select"></select>
+      </div>
+    </div>
+
+    <div id="state-fields">
+      <div class="segmented" style="margin-bottom: 1rem;">
+        <input type="radio" name="on_off" value="on" id="state-on" checked>
+        <label for="state-on">Turn on</label>
+        <input type="radio" name="on_off" value="off" id="state-off">
+        <label for="state-off">Turn off</label>
+      </div>
+
+      <div id="brightness-color-fields" class="card stack">
+        <div>
+          <label for="brightness" style="font-weight: 700; font-size: 0.85rem;">Brightness</label>
+          <div class="row__meta" id="brightness-value" style="margin-bottom: 0.25rem;">80%</div>
+          <input type="range" id="brightness" min="1" max="100" value="80">
+        </div>
+        <div class="color-field">
+          <label for="color" style="font-weight: 700; font-size: 0.85rem; margin: 0;">Color</label>
+          <input type="color" id="color" value="#f2a83d">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Options -->
+  <!-- Hidden for v1, not deleted: kept in place in case fade duration
+       comes back as a user-facing control later. The submit handler
+       in schedule_form.js no longer reads this section's value while
+       it's hidden, see the comment there for why. -->
+  <section class="form-section" hidden>
+    <div class="form-section__header">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.3 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5Z"/></svg>
+      <div>
+        <h2>4. Options</h2>
+        <p>Additional settings</p>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </div>
+      <div class="input-row__body">
+        <label for="transition">Fade</label>
+        <select id="transition">
+          <option value="0">Instant</option>
+          <option value="1000">1 sec</option>
+          <option value="5000">5 sec</option>
+          <option value="10000">10 sec</option>
+          <option value="30000" selected>30 sec</option>
+          <option value="60000">1 min</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    {% if schedule_id %}
+    <button type="button" class="btn" id="run-now-btn">Run now</button>
+    <button type="button" class="btn btn--danger" id="delete-btn">Delete</button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>const SCHEDULE_ID = {{ schedule_id | tojson }};</script>
+<script src="{{ url_for('static', path='js/icons.js') }}"></script>
+<script src="{{ url_for('static', path='js/schedule_form.js') }}"></script>
+{% endblock %}

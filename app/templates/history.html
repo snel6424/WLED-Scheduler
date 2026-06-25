@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}History · WLED Scheduler{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>History</h1>
+    <p>All past actions across your lights.</p>
+  </div>
+</div>
+
+<div class="field-row" style="margin-bottom: 1.5rem;">
+  <div class="field">
+    <label for="range-select">Date</label>
+    <select id="range-select">
+      <option value="7">Last 7 days</option>
+      <option value="30">Last 30 days</option>
+      <option value="all">All time</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="device-filter">Device</label>
+    <select id="device-filter">
+      <option value="">All Devices</option>
+    </select>
+  </div>
+</div>
+
+<div id="history-groups"></div>
+
+<button class="btn" id="load-more-btn" style="width:100%; margin-top: 1rem;" hidden>Load more</button>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/icons.js') }}"></script>
+<script src="{{ url_for('static', path='js/history.js') }}"></script>
+{% endblock %}

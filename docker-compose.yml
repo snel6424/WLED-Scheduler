@@ -1,0 +1,12 @@
+services:
+  wled-scheduler:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_PATH=data/scheduler.db
+      - LOG_LEVEL=INFO
+      # SCHEDULER_POLL_INTERVAL_SECONDS=30 is the default; override here if needed.
+    restart: unless-stopped
