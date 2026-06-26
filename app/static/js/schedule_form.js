@@ -38,7 +38,20 @@ function updateActionModeVisibility() {
   const mode = document.querySelector('input[name="action_mode"]:checked').value;
   document.getElementById("preset-field").hidden = mode !== "preset";
   document.getElementById("state-fields").hidden = mode === "preset";
-  if (mode === "preset") loadPresetsForSelectedDevice();
+  if (mode === "preset") {
+    loadPresetsForSelectedDevice();
+  } else {
+    setPresetEmptyState("");
+    updateSaveButtonState();
+  }
+}
+
+function updateSaveButtonState() {
+  const saveBtn = document.getElementById("save-btn");
+  const deviceDisabled = document.getElementById("device-select").disabled;
+  const presetMode = document.getElementById("action-preset").checked;
+  const presetDisabled = document.getElementById("preset-select").disabled;
+  saveBtn.disabled = deviceDisabled || (presetMode && presetDisabled);
 }
 
 function updateOnOffVisibility() {
@@ -71,11 +84,46 @@ async function loadSettings() {
   document.getElementById("timezone-display").textContent = settings.timezone || "Not set";
 }
 
+function setDeviceEmptyState(message) {
+  const hint = document.getElementById("device-empty-state");
+  hint.hidden = !message;
+  hint.innerHTML = message || "";
+}
+
+function setPresetEmptyState(message) {
+  const hint = document.getElementById("preset-empty-state");
+  hint.hidden = !message;
+  hint.innerHTML = message || "";
+}
+
 async function loadDevices(selectedId) {
   const devices = await apiGet("/api/devices");
   const select = document.getElementById("device-select");
+
+  if (devices.length === 0) {
+    select.innerHTML = `<option value="">No devices available</option>`;
+    select.disabled = true;
+    setDeviceEmptyState(
+      'No devices yet. <a href="/devices">Add a device</a> before creating a schedule.'
+    );
+    const presetSelect = document.getElementById("preset-select");
+    presetSelect.innerHTML = "";
+    presetSelect.disabled = true;
+    setPresetEmptyState("");
+    updateSaveButtonState();
+    return;
+  }
+
+  select.disabled = false;
+  setDeviceEmptyState("");
   select.innerHTML = devices.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
-  if (selectedId) select.value = selectedId;
+  if (selectedId && devices.some((d) => d.id === selectedId)) {
+    select.value = selectedId;
+  }
+  const presetSelect = document.getElementById("preset-select");
+  presetSelect.disabled = false;
+  setPresetEmptyState("");
+  updateSaveButtonState();
 }
 
 async function loadPresetsForSelectedDevice(selectedPresetId) {
@@ -83,16 +131,32 @@ async function loadPresetsForSelectedDevice(selectedPresetId) {
   const select = document.getElementById("preset-select");
   if (!deviceId) {
     select.innerHTML = "";
+    select.disabled = true;
+    setPresetEmptyState("Select a device to load presets.");
+    updateSaveButtonState();
     return;
   }
+  select.disabled = false;
   select.innerHTML = "<option>Loading…</option>";
   try {
     const presets = await apiGet(`/api/devices/${deviceId}/presets`);
-    select.innerHTML = presets.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
-    if (selectedPresetId != null) select.value = String(selectedPresetId);
+    if (presets.length === 0) {
+      select.innerHTML = `<option value="">No saved presets</option>`;
+      select.disabled = true;
+      setPresetEmptyState(
+        'This device has no saved presets. Choose "Custom" or save a preset on the device first.'
+      );
+    } else {
+      select.innerHTML = presets.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+      if (selectedPresetId != null) select.value = String(selectedPresetId);
+      setPresetEmptyState("");
+    }
   } catch (err) {
     select.innerHTML = `<option>${formatError(err)}</option>`;
+    select.disabled = true;
+    setPresetEmptyState("Could not load presets.");
   }
+  updateSaveButtonState();
 }
 
 async function loadExistingSchedule() {
