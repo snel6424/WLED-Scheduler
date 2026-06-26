@@ -14,10 +14,11 @@ Conventions used throughout this file:
 
 import enum
 import uuid
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, date, time
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -172,6 +173,11 @@ class Schedule(TimestampMixin, Base):
     # Bitmask: bit 0 = Monday ... bit 6 = Sunday. 127 = every day.
     days_of_week: Mapped[int] = mapped_column(Integer, default=127, nullable=False)
 
+    # Optional date range for the schedule. If set, the schedule only
+    # fires on or after start_date and on or before end_date.
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -196,6 +202,10 @@ class Schedule(TimestampMixin, Base):
         CheckConstraint(
             "days_of_week >= 0 AND days_of_week <= 127",
             name="ck_schedule_days_of_week_range",
+        ),
+        CheckConstraint(
+            "end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
+            name="ck_schedule_date_range_valid",
         ),
         CheckConstraint(
             "trigger_type IN ('time', 'sunrise', 'sunset')", name="ck_schedule_trigger_type_valid"

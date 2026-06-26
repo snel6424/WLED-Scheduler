@@ -4,14 +4,31 @@ direction (the client or the router) would actually show up here.
 """
 
 
+from tests.mock_wled import server as mock_wled_server
+
+
 def test_create_device_pulls_real_info_from_the_device(client, mock_wled_host):
-    response = client.post("/api/devices", json={"name": "Porch", "host": mock_wled_host})
+    response = client.post("/api/devices", json={"host": mock_wled_host})
     assert response.status_code == 201
     body = response.json()
+    assert body["name"] == "Test Light"
     assert body["mac"] == "aabbccddeeff"
     assert body["capabilities"]["led_count"] == 30
     assert body["capabilities"]["wifi_signal_percent"] == 88
     assert body["capabilities"]["version"] == "0.14.0"
+
+
+def test_create_device_uses_explicit_name_over_wled_name(client, mock_wled_host):
+    response = client.post("/api/devices", json={"name": "Lamp", "host": mock_wled_host})
+    assert response.status_code == 201
+    assert response.json()["name"] == "Lamp"
+
+
+def test_create_device_requires_name_if_wled_info_has_no_name(client, mock_wled_host, monkeypatch):
+    monkeypatch.setitem(mock_wled_server.INFO, "name", "")
+    response = client.post("/api/devices", json={"host": mock_wled_host})
+    assert response.status_code == 422
+    assert "name" in response.json()["detail"].lower()
 
 
 def test_duplicate_host_rejected(client, device, mock_wled_host):

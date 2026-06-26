@@ -63,3 +63,33 @@ def test_days_of_week_restriction_skips_to_the_correct_future_day():
         days_of_week=wednesday_bit, settings=OKLAHOMA, now_utc=now,
     )
     assert next_run == dt.datetime(2026, 7, 1, 12, 0, 0)
+
+
+def test_time_trigger_honors_start_date():
+    now = dt.datetime(2026, 6, 24, 18, 0, 0)
+    next_run = compute_next_run_at(
+        trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0), offset_minutes=None,
+        days_of_week=127, settings=OKLAHOMA, now_utc=now,
+        start_date=dt.date(2026, 6, 25), end_date=None,
+    )
+    assert next_run == dt.datetime(2026, 6, 25, 12, 0, 0)
+
+
+def test_time_trigger_honors_end_date_and_returns_none_when_expired():
+    now = dt.datetime(2026, 6, 24, 18, 0, 0)
+    next_run = compute_next_run_at(
+        trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0), offset_minutes=None,
+        days_of_week=127, settings=OKLAHOMA, now_utc=now,
+        start_date=None, end_date=dt.date(2026, 6, 23),
+    )
+    assert next_run is None
+
+
+def test_time_trigger_rejects_invalid_date_range():
+    now = dt.datetime(2026, 6, 24, 18, 0, 0)
+    with pytest.raises(ValueError):
+        compute_next_run_at(
+            trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0), offset_minutes=None,
+            days_of_week=127, settings=OKLAHOMA, now_utc=now,
+            start_date=dt.date(2026, 6, 26), end_date=dt.date(2026, 6, 25),
+        )

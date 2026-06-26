@@ -15,9 +15,14 @@ document.getElementById("add-device-form").addEventListener("submit", async (eve
   const name = document.getElementById("device-name").value.trim();
   const host = document.getElementById("device-host").value.trim();
   const room = document.getElementById("device-room").value.trim() || null;
+  const payload = { host, room };
+  if (name) {
+    payload.name = name;
+  }
+
   try {
-    await apiPost("/api/devices", { name, host, room });
-    toast(`Added ${name}`);
+    await apiPost("/api/devices", payload);
+    toast(`Added ${name || host}`);
     document.getElementById("add-device-form").reset();
     addCard.hidden = true;
     await loadDevices();

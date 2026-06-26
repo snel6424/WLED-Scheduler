@@ -21,6 +21,10 @@ from app.sun import LocationNotConfigured, sun_times
 _LOOKAHEAD_DAYS = 8
 
 
+class NoNextRunError(Exception):
+    """Raised when a schedule has no future occurrence in its date range."""
+
+
 def _day_bit(d: date) -> int:
     """Monday=bit 0 ... Sunday=bit 6, matching the bitmask convention
     used on Schedule.days_of_week in app.models."""
@@ -35,10 +39,13 @@ def compute_next_run_at(
     days_of_week: int,
     settings: Settings,
     now_utc: datetime,
-) -> datetime:
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> datetime | None:
     """Returns the next occurrence as a naive UTC datetime, strictly
-    after now_utc. Raises LocationNotConfigured if a sunrise/sunset
-    schedule is requested before latitude/longitude/timezone are set."""
+    after now_utc, or None if the schedule has no future run in the range.
+    Raises LocationNotConfigured if a sunrise/sunset schedule is requested
+    before latitude/longitude/timezone are set."""
     is_sun_trigger = trigger_type in (TriggerType.SUNRISE, TriggerType.SUNSET)
 
     if is_sun_trigger and (
@@ -52,24 +59,36 @@ def compute_next_run_at(
     tz = ZoneInfo(settings.timezone) if settings.timezone else ZoneInfo("UTC")
     now_local = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
 
-    for day_offset in range(_LOOKAHEAD_DAYS):
-        candidate_date = (now_local + timedelta(days=day_offset)).date()
-        if not (days_of_week & _day_bit(candidate_date)):
-            continue
+    if start_date is not None and end_date is not None and end_date < start_date:
+        raise ValueError("end_date must be the same as or after start_date")
 
-        if trigger_type == TriggerType.TIME:
-            candidate_local = datetime.combine(candidate_date, time_of_day, tzinfo=tz)
-        else:
-            events = sun_times(
-                settings.latitude, settings.longitude, settings.timezone, candidate_date
-            )
-            base = events["sunrise"] if trigger_type == TriggerType.SUNRISE else events["sunset"]
-            candidate_local = base + timedelta(minutes=offset_minutes)
+    search_start = now_local.date()
+    if start_date is not None and start_date > search_start:
+        search_start = start_date
 
-        if candidate_local > now_local:
-            return candidate_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    if end_date is not None and search_start > end_date:
+        return None
 
-    # Should be unreachable given days_of_week is constrained to 0-127
-    # and the lookahead window is longer than a week, but fail loudly
-    # rather than silently returning a bad value if it ever is.
-    raise RuntimeError("could not find a next occurrence within the lookahead window")
+    search_end = end_date if end_date is not None else search_start + timedelta(days=_LOOKAHEAD_DAYS)
+
+    candidate_date = search_start
+    while candidate_date <= search_end:
+        if days_of_week & _day_bit(candidate_date):
+            if trigger_type == TriggerType.TIME:
+                candidate_local = datetime.combine(candidate_date, time_of_day, tzinfo=tz)
+            else:
+                events = sun_times(
+                    settings.latitude, settings.longitude, settings.timezone, candidate_date
+                )
+                base = events["sunrise"] if trigger_type == TriggerType.SUNRISE else events["sunset"]
+                candidate_local = base + timedelta(minutes=offset_minutes)
+
+            if candidate_local > now_local:
+                return candidate_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+        candidate_date += timedelta(days=1)
+
+        if end_date is None and candidate_date > search_start + timedelta(days=_LOOKAHEAD_DAYS):
+            break
+
+    return None

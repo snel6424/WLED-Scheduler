@@ -40,6 +40,36 @@ def test_create_with_unknown_device_is_404(client, preset_action, configured_set
     assert response.status_code == 404
 
 
+def test_create_schedule_rejects_invalid_date_range(client, device, preset_action, configured_settings):
+    response = client.post(
+        "/api/schedules",
+        json={
+            "name": "Future", "device_id": device["id"], "action_id": preset_action["id"],
+            "trigger_type": "time", "time_of_day": "07:00:00",
+            "start_date": "2026-06-26", "end_date": "2026-06-25",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_update_schedule_rejects_invalid_date_range(client, device, preset_action, configured_settings):
+    created = client.post(
+        "/api/schedules",
+        json={
+            "name": "Morning", "device_id": device["id"], "action_id": preset_action["id"],
+            "trigger_type": "time", "time_of_day": "07:00:00",
+            "start_date": "2026-06-25", "end_date": "2026-06-26",
+        },
+    )
+    schedule_id = created.json()["id"]
+
+    response = client.patch(
+        f"/api/schedules/{schedule_id}",
+        json={"start_date": "2026-06-27", "end_date": "2026-06-26"},
+    )
+    assert response.status_code == 422
+
+
 def test_switching_trigger_type_without_clearing_old_field_is_422(
     client, device, preset_action, configured_settings
 ):

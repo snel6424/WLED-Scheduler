@@ -58,6 +58,8 @@ def merge_and_validate_schedule(
         "time_of_day": existing.time_of_day,
         "offset_minutes": existing.offset_minutes,
         "days_of_week": existing.days_of_week,
+        "start_date": existing.start_date,
+        "end_date": existing.end_date,
         "enabled": existing.enabled,
     }
     merged.update(update.model_dump(exclude_unset=True))

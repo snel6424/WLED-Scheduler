@@ -170,6 +170,8 @@ async function loadExistingSchedule() {
     document.getElementById("offset-minutes").value = schedule.offset_minutes;
   }
   setDayToggles(schedule.days_of_week);
+  document.getElementById("start-date").value = schedule.start_date || "";
+  document.getElementById("end-date").value = schedule.end_date || "";
   await loadDevices(schedule.device.id);
 
   const action = schedule.action;
@@ -215,6 +217,8 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
       time_of_day: triggerType === "time" ? document.getElementById("time-of-day").value + ":00" : null,
       offset_minutes: triggerType === "time" ? null : Number(document.getElementById("offset-minutes").value),
       days_of_week: getDaysOfWeekBitmask(),
+      start_date: document.getElementById("start-date").value || null,
+      end_date: document.getElementById("end-date").value || null,
     };
 
     const actionMode = document.querySelector('input[name="action_mode"]:checked').value;

@@ -11,7 +11,7 @@ palette; no sx/ix, no playlists) gets enforced at the API boundary
 instead of just living in a planning doc.
 """
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
 
@@ -104,7 +104,7 @@ class ActionRead(BaseModel):
 
 
 class DeviceCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str | None = Field(None, min_length=1, max_length=100)
     host: str = Field(..., min_length=1, max_length=255)
     room: str | None = Field(None, max_length=100)
 
@@ -199,6 +199,8 @@ class ScheduleBase(BaseModel):
     time_of_day: time | None = None
     offset_minutes: int | None = Field(None, ge=-720, le=720)
     days_of_week: int = Field(127, ge=0, le=127)
+    start_date: date | None = None
+    end_date: date | None = None
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -213,6 +215,9 @@ class ScheduleBase(BaseModel):
                 raise ValueError("offset_minutes is required for sunrise/sunset triggers")
             if self.time_of_day is not None:
                 raise ValueError("time_of_day must not be set for sunrise/sunset triggers")
+        if self.start_date is not None and self.end_date is not None:
+            if self.end_date < self.start_date:
+                raise ValueError("end_date must be the same as or after start_date")
         return self
 
 
@@ -229,6 +234,8 @@ class ScheduleUpdate(BaseModel):
     offset_minutes: int | None = Field(None, ge=-720, le=720)
     days_of_week: int | None = Field(None, ge=0, le=127)
     enabled: bool | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     # Same reasoning as ActionUpdate: trigger_type/time_of_day/offset_minutes
     # consistency is checked in the router after merging with the existing
     # row, since a partial body doesn't carry enough information alone.
@@ -242,6 +249,8 @@ class ScheduleRead(BaseModel):
     time_of_day: time | None
     offset_minutes: int | None
     days_of_week: int
+    start_date: date | None
+    end_date: date | None
     next_run_at: datetime | None
     last_run_at: datetime | None
     device: DeviceSummary

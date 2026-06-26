@@ -58,8 +58,18 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db)) -> Devic
             status_code=422, detail=f"Could not reach a WLED device at {payload.host!r}: {exc}"
         ) from exc
 
+    name = payload.name if payload.name is not None else info.get("name")
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Name is required when creating a device. "
+                "Provide a device name or ensure the WLED device reports its own name."
+            ),
+        )
+
     device = Device(
-        name=payload.name,
+        name=name,
         host=payload.host,
         room=payload.room,
         mac=info.get("mac"),

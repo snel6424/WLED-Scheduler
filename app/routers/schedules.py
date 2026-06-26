@@ -40,7 +40,14 @@ from app.wled_client import WledClientError
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
-_TRIGGER_FIELDS = {"trigger_type", "time_of_day", "offset_minutes", "days_of_week"}
+_TRIGGER_FIELDS = {
+    "trigger_type",
+    "time_of_day",
+    "offset_minutes",
+    "days_of_week",
+    "start_date",
+    "end_date",
+}
 
 
 def _get_schedule_or_404(db: Session, schedule_id: str) -> Schedule:
@@ -58,10 +65,12 @@ def _recompute_next_run_at(db: Session, schedule: Schedule) -> None:
             time_of_day=schedule.time_of_day,
             offset_minutes=schedule.offset_minutes,
             days_of_week=schedule.days_of_week,
+            start_date=schedule.start_date,
+            end_date=schedule.end_date,
             settings=settings,
             now_utc=utcnow(),
         )
-    except LocationNotConfigured as exc:
+    except (LocationNotConfigured, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -81,6 +90,8 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> S
         time_of_day=payload.time_of_day,
         offset_minutes=payload.offset_minutes,
         days_of_week=payload.days_of_week,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
         enabled=payload.enabled,
     )
     _recompute_next_run_at(db, schedule)  # may raise 422 before anything is added
@@ -128,6 +139,8 @@ def update_schedule(
     schedule.time_of_day = validated.time_of_day
     schedule.offset_minutes = validated.offset_minutes
     schedule.days_of_week = validated.days_of_week
+    schedule.start_date = validated.start_date
+    schedule.end_date = validated.end_date
     schedule.enabled = validated.enabled
 
     if _TRIGGER_FIELDS & update_fields.keys():
