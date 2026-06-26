@@ -62,8 +62,14 @@ function scheduleRowHtml(schedule) {
 }
 
 function renderList(schedules) {
+  const fabButton = document.querySelector('.btn--fab');
   if (schedules.length === 0) {
     const isFiltered = currentFilter !== "all";
+    if (!isFiltered) {
+      fabButton.classList.add("highlight");
+    } else {
+      fabButton.classList.remove("highlight");
+    }
     scheduleList.innerHTML = `
       <div class="empty">
         <h2>${isFiltered ? "No schedules match this filter" : "No schedules yet"}</h2>
@@ -71,6 +77,7 @@ function renderList(schedules) {
       </div>`;
     return;
   }
+  fabButton.classList.remove("highlight");
   scheduleList.innerHTML = schedules.map(scheduleRowHtml).join("");
 }
 

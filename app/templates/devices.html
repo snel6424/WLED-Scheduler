@@ -33,20 +33,22 @@
   <form id="add-device-form">
     <div class="field-row">
       <div class="field">
-        <label for="device-name">Name</label>
-        <input type="text" id="device-name" placeholder="Optional — uses WLED's configured name if left blank">
-      </div>
-      <div class="field">
         <label for="device-host">IP address or hostname</label>
         <input type="text" id="device-host" required placeholder="192.168.1.50">
+      </div>
+      <div class="field">
+        <label for="device-name">Name</label>
+        <input type="text" id="device-name" placeholder="Optional — uses WLED's configured name if left blank">
       </div>
     </div>
     <div class="field">
       <label for="device-room">Room (optional)</label>
       <input type="text" id="device-room" placeholder="Backyard">
     </div>
-    <button type="submit" class="btn btn--primary">Add device</button>
-    <button type="button" class="btn" id="cancel-add-device">Cancel</button>
+    <div style="display: flex; gap: 0.75rem; justify-content: space-between;">
+      <button type="submit" class="btn btn--primary">Add device</button>
+      <button type="button" class="btn" id="cancel-add-device">Cancel</button>
+    </div>
   </form>
 </div>
 

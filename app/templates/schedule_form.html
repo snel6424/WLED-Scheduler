@@ -84,34 +84,36 @@
       </div>
     </div>
     <div class="day-toggles" id="day-toggles">
+      <input type="checkbox" id="day-6" data-bit="6"><label for="day-6">Sun</label>
       <input type="checkbox" id="day-0" data-bit="0"><label for="day-0">Mon</label>
       <input type="checkbox" id="day-1" data-bit="1"><label for="day-1">Tue</label>
       <input type="checkbox" id="day-2" data-bit="2"><label for="day-2">Wed</label>
       <input type="checkbox" id="day-3" data-bit="3"><label for="day-3">Thu</label>
       <input type="checkbox" id="day-4" data-bit="4"><label for="day-4">Fri</label>
       <input type="checkbox" id="day-5" data-bit="5"><label for="day-5">Sat</label>
-      <input type="checkbox" id="day-6" data-bit="6"><label for="day-6">Sun</label>
     </div>
 
-    <div class="input-row" style="margin-top: 1rem;">
-      <div class="input-row__icon">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
+    <div class="date-row" style="margin-top: 1rem;">
+      <div class="input-row">
+        <div class="input-row__icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
+        </div>
+        <div class="input-row__body">
+          <label for="start-date">Start date</label>
+          <input type="date" id="start-date">
+          <p class="field__hint">Optional. Leave blank to start immediately.</p>
+        </div>
       </div>
-      <div class="input-row__body">
-        <label for="start-date">Start date</label>
-        <input type="date" id="start-date">
-        <p class="field__hint">Optional. Leave blank to start immediately.</p>
-      </div>
-    </div>
 
-    <div class="input-row">
-      <div class="input-row__icon">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
-      </div>
-      <div class="input-row__body">
-        <label for="end-date">End date</label>
-        <input type="date" id="end-date">
-        <p class="field__hint">Optional. Leave blank to continue indefinitely.</p>
+      <div class="input-row">
+        <div class="input-row__icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
+        </div>
+        <div class="input-row__body">
+          <label for="end-date">End date</label>
+          <input type="date" id="end-date">
+          <p class="field__hint">Optional. Leave blank to continue indefinitely.</p>
+        </div>
       </div>
     </div>
   </section>

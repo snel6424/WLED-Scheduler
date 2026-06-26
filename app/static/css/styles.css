@@ -208,6 +208,10 @@ svg {
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
 }
 .btn:hover {
   border-color: var(--accent);
@@ -257,6 +261,25 @@ svg {
 }
 .btn--fab:hover {
   background: var(--accent-strong);
+}
+
+@keyframes starburst {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 40px rgba(108, 99, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.btn--fab.highlight {
+  animation: starburst 1.5s ease-in-out infinite;
 }
 
 /* ---------- Cards / panels ---------- */
@@ -413,6 +436,7 @@ legend {
 .day-toggles {
   display: flex;
   gap: var(--space-2);
+  justify-content: space-between;
 }
 .day-toggles input {
   position: absolute;
@@ -431,6 +455,7 @@ legend {
   font-weight: 700;
   color: var(--text-muted);
   cursor: pointer;
+  flex-shrink: 0;
 }
 .day-toggles input:checked + label {
   border-color: var(--accent);
@@ -843,6 +868,43 @@ input[type="number"] {
   height: 24px;
   flex-shrink: 0;
   cursor: pointer;
+}
+
+/* Date row for side-by-side layout */
+.date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.date-row .input-row {
+  margin-top: 0 !important;
+  border-radius: var(--radius) !important;
+  border-top: none !important;
+}
+
+@media (max-width: 640px) {
+  .date-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Location fields for grouped input rows */
+.location-fields {
+  display: flex;
+  flex-direction: column;
+}
+.location-fields .input-row {
+  margin-top: 0 !important;
+  border-radius: 0 !important;
+}
+.location-fields .input-row:first-child {
+  border-radius: var(--radius) var(--radius) 0 0 !important;
+}
+.location-fields .input-row:last-child {
+  border-radius: 0 0 var(--radius) var(--radius) !important;
+}
+.location-fields .input-row:only-child {
+  border-radius: var(--radius) !important;
 }
 
 /* Day toggle checkmark, layered on top of the existing component */

@@ -25,7 +25,7 @@ async function api(path, options = {}) {
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail = body && body.detail ? body.detail : `Request failed (${response.status})`;
+    const detail = body && body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : `Request failed (${response.status})`;
     throw new ApiError(detail, response.status);
   }
 

@@ -91,7 +91,9 @@ function renderDevices() {
 
   renderSystemsCard(allDevices);
 
+  const showAddButton = document.getElementById("show-add-device");
   if (allDevices.length === 0) {
+    showAddButton.classList.add("highlight");
     deviceList.innerHTML = `
       <div class="empty">
         <h2>No devices yet</h2>
@@ -100,6 +102,7 @@ function renderDevices() {
     return;
   }
 
+  showAddButton.classList.remove("highlight");
   deviceList.innerHTML = sortDevices(allDevices).map(deviceRowHtml).join("");
 }
 
@@ -111,6 +114,72 @@ async function loadDevices() {
     return;
   }
   renderDevices();
+  startPolling();
 }
+
+/* Polling: update device status badges in-place every 15 seconds */
+let pollInterval = null;
+const POLL_INTERVAL_MS = 15000; // 15 seconds
+
+async function pollDevices() {
+  try {
+    const devices = await apiGet("/api/devices");
+
+    // Update allDevices array
+    allDevices = devices;
+
+    // Update stats
+    document.getElementById("stat-total").textContent = allDevices.length;
+    document.getElementById("stat-online").textContent = allDevices.filter((d) => d.online).length;
+    document.getElementById("stat-offline").textContent = allDevices.filter((d) => !d.online).length;
+
+    // Update each device row's status badge without re-rendering the entire list
+    devices.forEach((device) => {
+      const row = document.querySelector(`[data-id="${device.id}"]`);
+      if (!row) return; // Device row not in DOM, skip
+
+      const badge = row.querySelector(".badge");
+      if (badge) {
+        const statusClass = device.online ? "badge--success" : "badge--danger";
+        const statusText = device.online ? "Online" : "Offline";
+
+        // Update badge classes and text
+        badge.classList.remove("badge--success", "badge--danger");
+        badge.classList.add(statusClass);
+        badge.textContent = statusText;
+      }
+    });
+  } catch (err) {
+    // Fail silently for poll ticks; just try again next interval
+  }
+}
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(pollDevices, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+// Pause polling when tab is hidden, resume immediately when visible again
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    // Immediately fetch when tab becomes visible
+    pollDevices();
+    startPolling();
+  }
+});
+
+// Stop polling when page unloads
+window.addEventListener("beforeunload", () => {
+  stopPolling();
+});
 
 loadDevices();
