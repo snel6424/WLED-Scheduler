@@ -809,6 +809,7 @@ input[type="number"] {
 }
 .input-row__body input,
 .input-row__body select {
+  width: 100%;
   border: none;
   background: none;
   padding: 0;
