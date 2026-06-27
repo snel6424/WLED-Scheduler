@@ -94,6 +94,9 @@ def _advance(db: Session, schedule: Schedule, settings: Settings, now: datetime)
             time_of_day=schedule.time_of_day,
             offset_minutes=schedule.offset_minutes,
             days_of_week=schedule.days_of_week,
+            start_date=schedule.start_date,
+            end_date=schedule.end_date,
+            repeat_annually=schedule.repeat_annually,
             settings=settings,
             now_utc=now,
         )

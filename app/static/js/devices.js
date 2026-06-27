@@ -46,6 +46,10 @@ function sortDevices(devices) {
   return sorted;
 }
 
+function deviceIconClass(device) {
+  return device.online && device.powered_on ? "icon-avatar--sun" : "icon-avatar--moon";
+}
+
 function deviceRowHtml(device) {
   const caps = device.capabilities || {};
   const subtitle = device.room || caps.led_count ? `${device.room ? escapeHtml(device.room) : `${caps.led_count} LEDs`}` : device.host;
@@ -53,8 +57,8 @@ function deviceRowHtml(device) {
   const statusText = device.online ? "Online" : "Offline";
 
   return `
-    <a class="row" href="/devices/${device.id}" style="display:flex; align-items:center; text-decoration:none; color:inherit;">
-      <div class="icon-avatar icon-avatar--moon" style="margin-right: 1rem;">${ICONS.bulb}</div>
+    <a class="row" href="/devices/${device.id}" data-id="${device.id}" style="display:flex; align-items:center; text-decoration:none; color:inherit;">
+      <div class="icon-avatar ${deviceIconClass(device)}" style="margin-right: 1rem;">${ICONS.bulb}</div>
       <div class="row__main">
         <div class="row__title">${escapeHtml(device.name)}</div>
         <div class="row__meta">${subtitle}</div>
@@ -133,6 +137,8 @@ async function pollDevices() {
     document.getElementById("stat-online").textContent = allDevices.filter((d) => d.online).length;
     document.getElementById("stat-offline").textContent = allDevices.filter((d) => !d.online).length;
 
+    renderSystemsCard(allDevices);
+
     // Update each device row's status badge without re-rendering the entire list
     devices.forEach((device) => {
       const row = document.querySelector(`[data-id="${device.id}"]`);
@@ -140,13 +146,15 @@ async function pollDevices() {
 
       const badge = row.querySelector(".badge");
       if (badge) {
-        const statusClass = device.online ? "badge--success" : "badge--danger";
-        const statusText = device.online ? "Online" : "Offline";
-
-        // Update badge classes and text
         badge.classList.remove("badge--success", "badge--danger");
-        badge.classList.add(statusClass);
-        badge.textContent = statusText;
+        badge.classList.add(device.online ? "badge--success" : "badge--danger");
+        badge.textContent = device.online ? "Online" : "Offline";
+      }
+
+      const icon = row.querySelector(".icon-avatar");
+      if (icon) {
+        icon.classList.remove("icon-avatar--sun", "icon-avatar--moon");
+        icon.classList.add(deviceIconClass(device));
       }
     });
   } catch (err) {

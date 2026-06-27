@@ -60,6 +60,7 @@ def merge_and_validate_schedule(
         "days_of_week": existing.days_of_week,
         "start_date": existing.start_date,
         "end_date": existing.end_date,
+        "repeat_annually": existing.repeat_annually,
         "enabled": existing.enabled,
     }
     merged.update(update.model_dump(exclude_unset=True))

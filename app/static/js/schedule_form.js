@@ -60,6 +60,20 @@ function updateOnOffVisibility() {
   document.getElementById("brightness-color-fields").hidden = !on;
 }
 
+function updateRepeatAnnuallyVisibility() {
+  const annual = document.getElementById("repeat-annually").checked;
+  document.getElementById("repeat-annually-hint").hidden = !annual;
+  document.getElementById("start-date-label").textContent = annual ? "Start (month & day)" : "Start date";
+  document.getElementById("end-date-label").textContent = annual ? "End (month & day)" : "End date";
+  document.getElementById("start-date-hint").textContent = annual
+    ? "Required. Only the month and day are used."
+    : "Optional. Leave blank to start immediately.";
+  document.getElementById("end-date-hint").textContent = annual
+    ? "Required. Only the month and day are used."
+    : "Optional. Leave blank to continue indefinitely.";
+}
+
+document.getElementById("repeat-annually").addEventListener("change", updateRepeatAnnuallyVisibility);
 document.querySelectorAll('input[name="trigger_type"]').forEach((r) =>
   r.addEventListener("change", updateTriggerFieldVisibility)
 );
@@ -173,6 +187,7 @@ async function loadExistingSchedule() {
   setDayToggles(schedule.days_of_week);
   document.getElementById("start-date").value = schedule.start_date || "";
   document.getElementById("end-date").value = schedule.end_date || "";
+  document.getElementById("repeat-annually").checked = !!schedule.repeat_annually;
   await loadDevices(schedule.device.id);
 
   const action = schedule.action;
@@ -220,6 +235,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
       days_of_week: getDaysOfWeekBitmask(),
       start_date: document.getElementById("start-date").value || null,
       end_date: document.getElementById("end-date").value || null,
+      repeat_annually: document.getElementById("repeat-annually").checked,
     };
 
     const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
@@ -328,6 +344,7 @@ async function init() {
   updateTriggerFieldVisibility();
   updateActionModeVisibility();
   updateOnOffVisibility();
+  updateRepeatAnnuallyVisibility();
 }
 
 init();

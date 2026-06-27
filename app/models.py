@@ -17,6 +17,7 @@ import uuid
 from datetime import UTC, datetime, date, time
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -89,6 +90,7 @@ class Device(TimestampMixin, Base):
     room: Mapped[str | None] = mapped_column(String(100), nullable=True)
     mac: Mapped[str | None] = mapped_column(String(20), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    powered_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Cached subset of /json/info: led count, max segments, fx count,
     # palette count, firmware version. Refreshed on add and on manual refresh.
@@ -177,6 +179,9 @@ class Schedule(TimestampMixin, Base):
     # fires on or after start_date and on or before end_date.
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # When True, only the month+day of start_date/end_date are used;
+    # the window repeats every year rather than expiring after one pass.
+    repeat_annually: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -204,7 +209,7 @@ class Schedule(TimestampMixin, Base):
             name="ck_schedule_days_of_week_range",
         ),
         CheckConstraint(
-            "end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
+            "repeat_annually OR end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
             name="ck_schedule_date_range_valid",
         ),
         CheckConstraint(

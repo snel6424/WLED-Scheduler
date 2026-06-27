@@ -37,10 +37,12 @@ def tick() -> None:
         for device in devices:
             try:
                 wled_client.get_info(device.host)
+                state = wled_client.get_state(device.host)
             except WledClientError as exc:
                 logger.debug("Device %s (%r) did not respond: %s", device.id, device.name, exc)
                 continue
             device.last_seen_at = utcnow()
+            device.powered_on = bool(state.get("on", False))
         db.commit()
 
 

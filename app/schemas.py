@@ -122,6 +122,7 @@ class DeviceRead(BaseModel):
     mac: str | None
     last_seen_at: datetime | None
     capabilities: dict | None
+    powered_on: bool | None
     created_at: datetime
     updated_at: datetime
 
@@ -201,6 +202,7 @@ class ScheduleBase(BaseModel):
     days_of_week: int = Field(127, ge=0, le=127)
     start_date: date | None = None
     end_date: date | None = None
+    repeat_annually: bool = False
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -215,7 +217,10 @@ class ScheduleBase(BaseModel):
                 raise ValueError("offset_minutes is required for sunrise/sunset triggers")
             if self.time_of_day is not None:
                 raise ValueError("time_of_day must not be set for sunrise/sunset triggers")
-        if self.start_date is not None and self.end_date is not None:
+        if self.repeat_annually:
+            if self.start_date is None or self.end_date is None:
+                raise ValueError("start_date and end_date are both required when repeat_annually is true")
+        elif self.start_date is not None and self.end_date is not None:
             if self.end_date < self.start_date:
                 raise ValueError("end_date must be the same as or after start_date")
         return self
@@ -236,6 +241,7 @@ class ScheduleUpdate(BaseModel):
     enabled: bool | None = None
     start_date: date | None = None
     end_date: date | None = None
+    repeat_annually: bool | None = None
     # Same reasoning as ActionUpdate: trigger_type/time_of_day/offset_minutes
     # consistency is checked in the router after merging with the existing
     # row, since a partial body doesn't carry enough information alone.
@@ -251,6 +257,7 @@ class ScheduleRead(BaseModel):
     days_of_week: int
     start_date: date | None
     end_date: date | None
+    repeat_annually: bool
     next_run_at: datetime | None
     last_run_at: datetime | None
     device: DeviceSummary

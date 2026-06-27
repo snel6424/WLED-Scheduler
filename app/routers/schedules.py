@@ -47,6 +47,7 @@ _TRIGGER_FIELDS = {
     "days_of_week",
     "start_date",
     "end_date",
+    "repeat_annually",
 }
 
 
@@ -67,6 +68,7 @@ def _recompute_next_run_at(db: Session, schedule: Schedule) -> None:
             days_of_week=schedule.days_of_week,
             start_date=schedule.start_date,
             end_date=schedule.end_date,
+            repeat_annually=schedule.repeat_annually,
             settings=settings,
             now_utc=utcnow(),
         )
@@ -92,6 +94,7 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> S
         days_of_week=payload.days_of_week,
         start_date=payload.start_date,
         end_date=payload.end_date,
+        repeat_annually=payload.repeat_annually,
         enabled=payload.enabled,
     )
     _recompute_next_run_at(db, schedule)  # may raise 422 before anything is added
@@ -141,6 +144,7 @@ def update_schedule(
     schedule.days_of_week = validated.days_of_week
     schedule.start_date = validated.start_date
     schedule.end_date = validated.end_date
+    schedule.repeat_annually = validated.repeat_annually
     schedule.enabled = validated.enabled
 
     if _TRIGGER_FIELDS & update_fields.keys():

@@ -12,6 +12,10 @@ function renderDeviceInfo(device) {
   document.getElementById("device-name").textContent = device.name;
   document.getElementById("device-room").textContent = device.room || "No room set";
 
+  const icon = document.getElementById("device-icon");
+  icon.classList.remove("icon-avatar--sun", "icon-avatar--moon");
+  icon.classList.add(device.online && device.powered_on ? "icon-avatar--sun" : "icon-avatar--moon");
+
   const statusEl = document.getElementById("device-status");
   const detailEl = document.getElementById("device-status-detail");
   statusEl.textContent = device.online ? "Online" : "Offline";

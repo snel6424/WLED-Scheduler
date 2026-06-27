@@ -99,9 +99,9 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
         </div>
         <div class="input-row__body">
-          <label for="start-date">Start date</label>
+          <label for="start-date" id="start-date-label">Start date</label>
           <input type="date" id="start-date">
-          <p class="field__hint">Optional. Leave blank to start immediately.</p>
+          <p class="field__hint" id="start-date-hint">Optional. Leave blank to start immediately.</p>
         </div>
       </div>
 
@@ -110,10 +110,26 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3h8v4"/><path d="M5 9h14v10H5z"/></svg>
         </div>
         <div class="input-row__body">
-          <label for="end-date">End date</label>
+          <label for="end-date" id="end-date-label">End date</label>
           <input type="date" id="end-date">
-          <p class="field__hint">Optional. Leave blank to continue indefinitely.</p>
+          <p class="field__hint" id="end-date-hint">Optional. Leave blank to continue indefinitely.</p>
         </div>
+      </div>
+    </div>
+
+    <div class="input-row" style="margin-top: var(--space-2);">
+      <div class="input-row__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0"/><path d="M12 8v4l2 2"/><path d="M16.5 3.5c1 1.5 1.5 3.2 1.5 5"/><path d="M16 17l1.5 1.5"/></svg>
+      </div>
+      <div class="input-row__body" style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <label for="repeat-annually" style="cursor:pointer;">Repeat every year</label>
+          <p class="field__hint" id="repeat-annually-hint" hidden>Only the month and day matter — the year is ignored. For windows that cross a year boundary (e.g. Dec → Jan), enter the end date in the following year.</p>
+        </div>
+        <label class="switch" style="margin-left: 1rem;">
+          <input type="checkbox" id="repeat-annually">
+          <span class="switch__track"></span>
+        </label>
       </div>
     </div>
   </section>
