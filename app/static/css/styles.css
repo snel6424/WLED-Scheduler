@@ -971,7 +971,8 @@ input[type="color"] {
   margin-top: var(--space-6);
   display: flex;
   gap: var(--space-3);
+  justify-content: space-between;
 }
 .form-actions .btn {
-  flex: 1;
+  flex: 0 1 auto;
 }

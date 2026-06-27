@@ -212,9 +212,11 @@
   </section>
 
   <div class="form-actions">
-    {% if schedule_id %}
     <button type="button" class="btn" id="run-now-btn">Run now</button>
+    {% if schedule_id %}
     <button type="button" class="btn btn--danger" id="delete-btn">Delete</button>
+    {% else %}
+    <a href="/schedules" class="btn">Cancel</a>
     {% endif %}
   </div>
 </form>

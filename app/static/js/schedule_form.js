@@ -2,6 +2,7 @@
 // a real id when editing.
 
 let existingActionId = null;
+let shouldRunNow = false;
 
 function setDayToggles(bitmask) {
   document.querySelectorAll("#day-toggles input").forEach((input) => {
@@ -249,34 +250,59 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     }
 
     let actionId;
+    let newScheduleId;
     if (SCHEDULE_ID) {
       await apiPatch(`/api/actions/${existingActionId}`, actionPayload);
       actionId = existingActionId;
       await apiPatch(`/api/schedules/${SCHEDULE_ID}`, { ...schedulePayload, action_id: actionId });
+      newScheduleId = SCHEDULE_ID;
     } else {
       const action = await apiPost("/api/actions", actionPayload);
       actionId = action.id;
-      await apiPost("/api/schedules", { ...schedulePayload, action_id: actionId });
+      const schedule = await apiPost("/api/schedules", { ...schedulePayload, action_id: actionId });
+      newScheduleId = schedule.id;
     }
 
-    toast("Schedule saved");
+    // If "Run now" was clicked, run the schedule before redirecting
+    if (shouldRunNow && !SCHEDULE_ID) {
+      try {
+        const result = await apiPost(`/api/schedules/${newScheduleId}/run-now`);
+        if (result.status === "success") {
+          toast("Schedule saved and ran now");
+        } else {
+          toast(`Schedule saved but run failed: ${result.error_message || "unknown error"}`, { error: true });
+        }
+      } catch (err) {
+        toast(`Schedule saved but run failed: ${formatError(err)}`, { error: true });
+      }
+    } else {
+      toast("Schedule saved");
+    }
     location.href = "/schedules";
   } catch (err) {
     toast(formatError(err), { error: true });
     saveBtn.disabled = false;
+    shouldRunNow = false;
   }
 });
 
-document.getElementById("run-now-btn")?.addEventListener("click", async () => {
-  try {
-    const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`);
-    if (result.status === "success") {
-      toast("Ran now successfully");
-    } else {
-      toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
+document.getElementById("run-now-btn").addEventListener("click", async () => {
+  if (SCHEDULE_ID) {
+    // Editing an existing schedule: run it directly
+    try {
+      const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`);
+      if (result.status === "success") {
+        toast("Ran now successfully");
+      } else {
+        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
+      }
+    } catch (err) {
+      toast(formatError(err), { error: true });
     }
-  } catch (err) {
-    toast(formatError(err), { error: true });
+  } else {
+    // Creating a new schedule: set flag and submit the form
+    shouldRunNow = true;
+    document.getElementById("schedule-form").dispatchEvent(new Event("submit"));
   }
 });
 
