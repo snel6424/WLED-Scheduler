@@ -14,7 +14,7 @@ Conventions used throughout this file:
 
 import enum
 import uuid
-from datetime import UTC, datetime, date, time
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import (
     Boolean,
