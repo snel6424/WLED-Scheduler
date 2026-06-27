@@ -1,114 +1,99 @@
 # WLED Scheduler
 
-A self-hosted scheduler for [WLED](https://kno.wled.ge/) lights. Create
-schedules that turn your lights on, off, or into a saved preset at a
-fixed time or relative to sunrise/sunset, with no cloud dependency:
-everything runs on your own network, talking directly to your WLED
-devices over their local JSON API.
+**Automate your WLED lights, no cloud, no app, no subscription.**
 
-## Features (v1)
+WLED Scheduler is a self-hosted scheduler for WLED-powered lights.
+Set them to turn on, off, or change to a saved preset at a fixed time
+or relative to sunrise/sunset, and let it run unattended from there.
+Everything happens on your own network, talking directly to your
+lights, nothing is sent anywhere else.
 
-- Add WLED devices by IP address or hostname
-- Schedules triggered by a fixed time, or by sunrise/sunset with an offset
-- Actions: apply a saved device preset, or a custom on/off + brightness + color
-- Day-of-week recurrence
-- Run-now, to verify a schedule fires correctly before trusting it unattended
-- Online/offline status for each device, checked periodically in the background
-- Full run history, across all schedules or filtered to one device
-- Catch-up behavior for schedules missed while the app was offline, configurable in Settings
+- **Self-hosted**: runs on your own hardware, your data never leaves
+  your network
+- **No cloud dependency**: schedules, sunrise/sunset times, and
+  device communication are all computed and handled locally
+- **Lightweight**: a single SQLite database, no external services to
+  run alongside it
+- **Flexible scheduling**: fixed time, or sunrise/sunset with an
+  offset, with day-of-week recurrence
+- **Free and open source**: MIT licensed, nothing paywalled
 
-Not in v1, by design: device groups, playlists, mDNS auto-discovery,
-manual on-the-fly light control, remote access outside your LAN. See
-`CONTRIBUTING.md` if you're interested in why, or in picking one of
-these up.
+---
 
-## Quick start
+## Installation
 
-### Docker (recommended)
+Requires [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
-docker compose up --build
+git clone https://github.com/snel6424/WLED-Scheduler.git
+cd WLED-Scheduler
+docker compose up --build -d
 ```
 
-Then open `http://localhost:8000`. Migrations run automatically before
-the server starts. Data persists in `./data`, mounted as a volume.
+Then open `http://<your device's IP address>:8000`.
 
-### Without Docker
+---
 
-Requires Python 3.11+.
+## Getting started
+
+Once it's running, two things to do before it can actually schedule
+anything:
+
+1. **Settings** → enter your latitude, longitude, and timezone. This
+   is required before any sunrise/sunset-based schedule can be
+   created.
+2. **Devices** → add your WLED light by its IP address or hostname.
+
+From there, head to **Schedules** to create your first one.
+
+---
+
+## Updating
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -e .
-alembic upgrade head
-uvicorn app.main:app --reload
+git pull
+docker compose up --build -d
 ```
 
-Then open `http://localhost:8000`.
+---
 
-## Configuration
+## Features
 
-Every setting is an environment variable with a sensible default; see
-`.env.example` for the full list (database path, background poll
-intervals, log level, host/port).
+### Scheduling
+Create schedules triggered by a fixed time of day, or by sunrise or
+sunset with a configurable offset (e.g., 15 minutes before sunset).
+Each schedule can repeat on any combination of days of the week, and
+can either apply a saved preset on the device or set a custom
+on/off/brightness/color state.
 
-Location (latitude, longitude, timezone) and the missed-schedule
-catch-up behavior are configured in the app itself, under Settings,
-not via environment variables, since they're things you set once
-through the UI rather than at deploy time.
+### Devices
+Add WLED lights by IP address or hostname and see live online/offline
+status, checked automatically in the background.
 
-## Data and backups
+### History
+A full log of every schedule that's fired, filterable by device and
+date range, showing what happened and whether it succeeded.
 
-Everything this app knows, devices, actions, schedules, and run
-history, lives in one file: the SQLite database at `DATABASE_PATH`
-(`data/scheduler.db` by default, or `./data/scheduler.db` on the host
-when running via Docker Compose). There's no in-app export or backup
-feature in v1. Back it up the same way you'd back up any file: copy
-it somewhere while the app isn't actively writing to it, or stop the
-container briefly first if you want to be extra safe.
+### Settings
+Location and timezone configuration (used to calculate sunrise and
+sunset), and missed-schedule catch-up behavior, controlling whether a
+schedule missed while the app was offline fires late or is skipped.
 
-## Development
+---
 
-```bash
-pip install -e ".[dev]"
-pytest                  # full suite
-pytest -m "not slow"    # skip the one test that does real wall-clock sleeping
-ruff check .            # lint
-```
+## Roadmap
 
-The test suite uses a small mock WLED server (`tests/mock_wled/`) so
-the full suite, including device communication, runs without any
-real hardware.
+Designed, but not yet implemented:
+- A one-command install path for Raspberry Pi, no Docker required,
+  intended for non-technical users
+- An in-app update checker and one-click updater
 
-### Project layout
+## Contributing
 
-```
-app/
-  models.py, schemas.py      data layer and API contracts
-  routers/                   JSON API and page routes
-  scheduler.py                background loop: fires due schedules
-  device_health.py            background loop: device reachability
-  wled_client.py               talks to WLED's JSON API
-  templates/, static/         server-rendered HTML, CSS, JS (no build step)
-alembic/                      database migrations
-tests/                        pytest suite, including the mock WLED server
-```
-
-### Database migrations
-
-This project uses Alembic. After changing `app/models.py`:
-
-```bash
-alembic revision --autogenerate -m "describe the change"
-```
-
-Then **read the generated migration before applying it**. Autogenerate
-reliably picks up new tables and columns, but not always things like
-`CheckConstraint`s added to an existing column, those sometimes need
-to be added by hand. When in doubt, generate it against a real
-database and inspect the actual SQL it produces.
+See [CONTRIBUTING.md](CONTRIBUTING.md), including the list of
+features deliberately out of scope for now (device groups, playlists,
+mDNS auto-discovery, manual live control, remote access) and why.
 
 ## License
 
-MIT, see `LICENSE`.
+MIT, see [LICENSE](LICENSE).
