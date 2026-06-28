@@ -81,12 +81,16 @@ schedule missed while the app was offline fires late or is skipped.
 
 ---
 
-## Roadmap
+### Screenshots
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/e3394739-e14c-4600-a775-3f047477fa59" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/f5a94062-ced4-494a-8045-86651c1e7b0d" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/b042bc04-959a-46ca-b842-d175e5bf95de" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/c0cf3ed2-c587-4e3b-9193-7bcd69dbea1c" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/83c4cbe0-3956-4781-ba95-7bf9fa552521" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/5b69c26b-cafb-4d26-bd3c-360863f4f425" />
+<img width="341" height="555" alt="image" src="https://github.com/user-attachments/assets/44a38159-bcfd-4448-91c3-7765bc52a6f3" />
 
-Designed, but not yet implemented:
-- A one-command install path for Raspberry Pi, no Docker required,
-  intended for non-technical users
-- An in-app update checker and one-click updater
+---
 
 ## Contributing
 
