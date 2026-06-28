@@ -10,7 +10,11 @@
   <button class="form-header__save" id="save-btn" type="submit" form="schedule-form">Save</button>
 </div>
 
-<form id="schedule-form">
+{# Alpine component owns the three toggle groups so x-show can replace
+   the `hidden` attribute, which previously lost to `display: flex` on
+   several of these elements via CSS specificity. #}
+<form id="schedule-form" x-data="scheduleFormVis">
+
   <div class="input-row" style="margin-bottom: 1.5rem;">
     <div class="input-row__icon">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -32,18 +36,18 @@
     </div>
 
     <div class="segmented" style="margin-bottom: 1rem;">
-      <input type="radio" name="trigger_type" value="time" id="trigger-time" checked>
+      <input type="radio" name="trigger_type" value="time" id="trigger-time" x-model="triggerType" checked>
       <label for="trigger-time">Time</label>
-      <input type="radio" name="trigger_type" value="sunrise" id="trigger-sunrise">
+      <input type="radio" name="trigger_type" value="sunrise" id="trigger-sunrise" x-model="triggerType">
       <label for="trigger-sunrise">Sunrise</label>
-      <input type="radio" name="trigger_type" value="sunset" id="trigger-sunset">
+      <input type="radio" name="trigger_type" value="sunset" id="trigger-sunset" x-model="triggerType">
       <label for="trigger-sunset">Sunset</label>
     </div>
     <p class="field__hint" id="location-hint" hidden>
       Sunrise and sunset triggers need a location. Set one in Settings to use them.
     </p>
 
-    <div id="time-field" class="input-row">
+    <div id="time-field" class="input-row" x-show="triggerType === 'time'">
       <div class="input-row__icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       </div>
@@ -53,7 +57,7 @@
       </div>
     </div>
 
-    <div id="offset-field" class="input-row" hidden>
+    <div id="offset-field" class="input-row" x-show="triggerType !== 'time'" x-cloak>
       <div class="input-row__icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M3 17h18M5 9l1.2 1.2M19 9l-1.2 1.2"/></svg>
       </div>
@@ -156,13 +160,13 @@
     </div>
 
     <div class="segmented" style="margin-bottom: 1rem;">
-      <input type="radio" name="action_mode" value="state" id="action-state" checked>
+      <input type="radio" name="action_mode" value="state" id="action-state" x-model="actionMode" checked>
       <label for="action-state">Custom</label>
-      <input type="radio" name="action_mode" value="preset" id="action-preset">
+      <input type="radio" name="action_mode" value="preset" id="action-preset" x-model="actionMode">
       <label for="action-preset">Saved preset</label>
     </div>
 
-    <div id="preset-field" class="input-row" hidden>
+    <div id="preset-field" class="input-row" x-show="actionMode === 'preset'" x-cloak>
       <div class="input-row__icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
       </div>
@@ -173,15 +177,15 @@
       </div>
     </div>
 
-    <div id="state-fields">
+    <div id="state-fields" x-show="actionMode !== 'preset'">
       <div class="segmented" style="margin-bottom: 1rem;">
-        <input type="radio" name="on_off" value="on" id="state-on" checked>
+        <input type="radio" name="on_off" value="on" id="state-on" x-model="onOff" checked>
         <label for="state-on">Turn on</label>
-        <input type="radio" name="on_off" value="off" id="state-off">
+        <input type="radio" name="on_off" value="off" id="state-off" x-model="onOff">
         <label for="state-off">Turn off</label>
       </div>
 
-      <div id="brightness-color-fields" class="card stack">
+      <div id="brightness-color-fields" class="card stack" x-show="onOff === 'on'">
         <div>
           <label for="brightness" style="font-weight: 700; font-size: 0.85rem;">Brightness</label>
           <div class="row__meta" id="brightness-value" style="margin-bottom: 0.25rem;">80%</div>
@@ -239,7 +243,17 @@
 {% endblock %}
 
 {% block scripts %}
-<script>const SCHEDULE_ID = {{ schedule_id | tojson }};</script>
+<script>
+const SCHEDULE_ID = {{ schedule_id | tojson }};
+
+document.addEventListener('alpine:init', () => {
+  Alpine.data('scheduleFormVis', () => ({
+    triggerType: 'time',
+    actionMode: 'state',
+    onOff: 'on',
+  }));
+});
+</script>
 <script src="{{ url_for('static', path='js/icons.js') }}"></script>
 <script src="{{ url_for('static', path='js/schedule_form.js') }}"></script>
 {% endblock %}

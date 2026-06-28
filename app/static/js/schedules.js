@@ -37,7 +37,7 @@ function scheduleRowHtml(schedule) {
       : `<span class="schedule-row__time schedule-row__time--sun">${ICONS.sunHorizon}${formatSunOffset(schedule.trigger_type, schedule.offset_minutes)}</span>`;
 
   return `
-    <div class="row" data-id="${schedule.id}">
+    <div class="row" data-id="${schedule.id}" style="cursor: pointer;">
       <div class="schedule-row">
         <div class="icon-avatar ${className}">${icon}</div>
         <div class="schedule-row__body">
@@ -97,6 +97,14 @@ filterRow.addEventListener("click", (event) => {
   pill.classList.add("is-active");
   currentFilter = pill.dataset.filter;
   applyFilter();
+});
+
+scheduleList.addEventListener("click", (event) => {
+  // Let the toggle switch handle its own clicks without navigating.
+  // Let real <a> elements (the chevron) handle themselves normally.
+  if (event.target.closest(".switch") || event.target.closest("a")) return;
+  const row = event.target.closest(".row[data-id]");
+  if (row) location.href = `/schedules/${row.dataset.id}/edit`;
 });
 
 scheduleList.addEventListener("change", async (event) => {

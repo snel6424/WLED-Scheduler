@@ -29,16 +29,20 @@ function rgbToHex([r, g, b]) {
   return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 
-function updateTriggerFieldVisibility() {
-  const triggerType = document.querySelector('input[name="trigger_type"]:checked').value;
-  document.getElementById("time-field").hidden = triggerType !== "time";
-  document.getElementById("offset-field").hidden = triggerType === "time";
+// Sets a radio button's checked state and dispatches a change event so
+// Alpine's x-model binding picks up the new value reactively. Without
+// the event, setting .checked programmatically doesn't notify Alpine.
+function setRadio(name, value) {
+  const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+  if (!radio) return;
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function updateActionModeVisibility() {
   const mode = document.querySelector('input[name="action_mode"]:checked').value;
-  document.getElementById("preset-field").hidden = mode !== "preset";
-  document.getElementById("state-fields").hidden = mode === "preset";
+  // Alpine's x-show handles preset-field / state-fields visibility;
+  // this function's remaining job is to trigger preset-list loading.
   if (mode === "preset") {
     loadPresetsForSelectedDevice();
   } else {
@@ -55,11 +59,6 @@ function updateSaveButtonState() {
   saveBtn.disabled = deviceDisabled || (presetMode && presetDisabled);
 }
 
-function updateOnOffVisibility() {
-  const on = document.querySelector('input[name="on_off"]:checked').value === "on";
-  document.getElementById("brightness-color-fields").hidden = !on;
-}
-
 function updateRepeatAnnuallyVisibility() {
   const annual = document.getElementById("repeat-annually").checked;
   document.getElementById("repeat-annually-hint").hidden = !annual;
@@ -74,14 +73,8 @@ function updateRepeatAnnuallyVisibility() {
 }
 
 document.getElementById("repeat-annually").addEventListener("change", updateRepeatAnnuallyVisibility);
-document.querySelectorAll('input[name="trigger_type"]').forEach((r) =>
-  r.addEventListener("change", updateTriggerFieldVisibility)
-);
 document.querySelectorAll('input[name="action_mode"]').forEach((r) =>
   r.addEventListener("change", updateActionModeVisibility)
-);
-document.querySelectorAll('input[name="on_off"]').forEach((r) =>
-  r.addEventListener("change", updateOnOffVisibility)
 );
 document.getElementById("brightness").addEventListener("input", (event) => {
   document.getElementById("brightness-value").textContent = `${event.target.value}%`;
@@ -178,7 +171,7 @@ async function loadExistingSchedule() {
   const schedule = await apiGet(`/api/schedules/${SCHEDULE_ID}`);
 
   document.getElementById("name").value = schedule.name;
-  document.querySelector(`input[name="trigger_type"][value="${schedule.trigger_type}"]`).checked = true;
+  setRadio("trigger_type", schedule.trigger_type);
   if (schedule.trigger_type === "time") {
     document.getElementById("time-of-day").value = schedule.time_of_day.slice(0, 5);
   } else {
@@ -194,12 +187,12 @@ async function loadExistingSchedule() {
   existingActionId = action.id;
 
   if (action.type === "preset") {
-    document.getElementById("action-preset").checked = true;
+    setRadio("action_mode", "preset");
     await loadPresetsForSelectedDevice(action.payload.ps);
   } else {
-    document.getElementById("action-state").checked = true;
+    setRadio("action_mode", "state");
     const on = action.payload.on !== false;
-    document.querySelector(`input[name="on_off"][value="${on ? "on" : "off"}"]`).checked = true;
+    setRadio("on_off", on ? "on" : "off");
     if (action.payload.bri != null) {
       document.getElementById("brightness").value = briToPercent(action.payload.bri);
       document.getElementById("brightness-value").textContent = `${briToPercent(action.payload.bri)}%`;
@@ -341,9 +334,10 @@ async function init() {
     setDayToggles(127);
     await loadDevices();
   }
-  updateTriggerFieldVisibility();
+  // Alpine's x-show handles triggerType / actionMode / onOff visibility.
+  // updateActionModeVisibility still runs here to trigger preset loading
+  // when editing an existing preset schedule.
   updateActionModeVisibility();
-  updateOnOffVisibility();
   updateRepeatAnnuallyVisibility();
 }
 

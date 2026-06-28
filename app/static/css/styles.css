@@ -122,6 +122,12 @@ svg {
   display: block;
 }
 
+/* Prevents Alpine-managed elements from flashing visible before Alpine
+   initialises. Add x-cloak to any element whose x-show starts false. */
+[x-cloak] {
+  display: none !important;
+}
+
 /* Several components below set `display: flex` directly on a class
    (.input-row, .row, .schedule-row, etc). Author stylesheets beat the
    browser's default `[hidden] { display: none }` rule at equal
