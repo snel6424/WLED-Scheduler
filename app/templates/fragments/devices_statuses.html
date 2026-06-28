@@ -1,0 +1,48 @@
+{# Pure OOB payload for the polling element (hx-swap="none").
+   Updates stats counters, each device's icon avatar, and each badge
+   without touching any other part of the DOM — so expanded panels or
+   other UI state on the page survive every poll tick. #}
+
+{% set online_count = devices | selectattr('online') | list | length %}
+{% set offline_count = devices | length - online_count %}
+
+{# Stats counters #}
+<div id="stat-total" hx-swap-oob="innerHTML">{{ devices | length }}</div>
+<div id="stat-online" hx-swap-oob="innerHTML">{{ online_count }}</div>
+<div id="stat-offline" hx-swap-oob="innerHTML">{{ offline_count }}</div>
+
+{# Systems card — re-rendered in full so offline-count wording stays accurate #}
+<div id="systems-card" hx-swap-oob="outerHTML"
+     class="info-card" style="margin-top: 1.5rem;"
+     {% if not devices %}hidden{% endif %}>
+  {% if devices %}
+    {% if offline_count == 0 %}
+      <div class="info-card__icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6Z"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <div><h3>All systems operational</h3><p>All your devices are working normally.</p></div>
+    {% else %}
+      <div class="info-card__icon" style="color: var(--danger);">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></svg>
+      </div>
+      <div>
+        <h3>{{ offline_count }} device{{ 's' if offline_count != 1 else '' }} offline</h3>
+        <p>Check power and network connectivity.</p>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+{# Per-device icon avatar and status badge #}
+{% for device in devices %}
+<div id="device-icon-{{ device.id }}" hx-swap-oob="outerHTML"
+     class="icon-avatar {{ 'icon-avatar--sun' if (device.online and device.powered_on) else 'icon-avatar--moon' }}"
+     style="margin-right: 1rem;">
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+</div>
+<span id="device-badge-{{ device.id }}" hx-swap-oob="outerHTML"
+      class="badge {{ 'badge--success' if device.online else 'badge--danger' }}"
+      style="margin-right: 0.75rem;">
+  {{ 'Online' if device.online else 'Offline' }}
+</span>
+{% endfor %}
