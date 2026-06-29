@@ -1,5 +1,9 @@
 const scheduleList = document.getElementById("schedule-list");
 
+LongPressDelete.attach(scheduleList, {
+  deleteItem: (id) => apiDelete(`/api/schedules/${id}`),
+});
+
 scheduleList.addEventListener("change", async (event) => {
   const checkbox = event.target.closest('input[data-action="toggle"]');
   if (!checkbox) return;

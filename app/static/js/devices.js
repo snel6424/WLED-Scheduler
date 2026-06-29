@@ -11,6 +11,17 @@
  * request brings every counter back in sync.
  */
 
+LongPressDelete.attach(document.getElementById("device-list"), {
+  deleteItem: (id) => apiDelete(`/api/devices/${id}`),
+  afterDelete() {
+    const sort = (document.getElementById("sort-select") || {}).value || "name";
+    htmx.ajax("GET", `/fragments/devices/list?sort=${sort}`, {
+      target: "#device-list",
+      swap: "innerHTML",
+    });
+  },
+});
+
 document.getElementById("add-device-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("device-name").value.trim();

@@ -2,7 +2,6 @@
 // a real id when editing.
 
 let existingActionId = null;
-let shouldRunNow = false;
 
 function setDayToggles(bitmask) {
   document.querySelectorAll("#day-toggles input").forEach((input) => {
@@ -262,60 +261,67 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
       actionPayload = { name: schedulePayload.name, type: "state", payload, transition_ms: transitionMs };
     }
 
-    let actionId;
-    let newScheduleId;
     if (SCHEDULE_ID) {
       await apiPatch(`/api/actions/${existingActionId}`, actionPayload);
-      actionId = existingActionId;
-      await apiPatch(`/api/schedules/${SCHEDULE_ID}`, { ...schedulePayload, action_id: actionId });
-      newScheduleId = SCHEDULE_ID;
+      await apiPatch(`/api/schedules/${SCHEDULE_ID}`, { ...schedulePayload, action_id: existingActionId });
     } else {
       const action = await apiPost("/api/actions", actionPayload);
-      actionId = action.id;
-      const schedule = await apiPost("/api/schedules", { ...schedulePayload, action_id: actionId });
-      newScheduleId = schedule.id;
+      await apiPost("/api/schedules", { ...schedulePayload, action_id: action.id });
     }
 
-    // If "Run now" was clicked, run the schedule before redirecting
-    if (shouldRunNow && !SCHEDULE_ID) {
-      try {
-        const result = await apiPost(`/api/schedules/${newScheduleId}/run-now`);
-        if (result.status === "success") {
-          toast("Schedule saved and ran now");
-        } else {
-          toast(`Schedule saved but run failed: ${result.error_message || "unknown error"}`, { error: true });
-        }
-      } catch (err) {
-        toast(`Schedule saved but run failed: ${formatError(err)}`, { error: true });
-      }
-    } else {
-      toast("Schedule saved");
-    }
+    toast("Schedule saved");
     location.href = "/schedules";
   } catch (err) {
     toast(formatError(err), { error: true });
     saveBtn.disabled = false;
-    shouldRunNow = false;
   }
 });
 
 document.getElementById("run-now-btn").addEventListener("click", async () => {
-  if (SCHEDULE_ID) {
-    // Editing an existing schedule: run it directly
-    try {
+  const btn = document.getElementById("run-now-btn");
+  btn.disabled = true;
+  try {
+    if (SCHEDULE_ID) {
       const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`);
       if (result.status === "success") {
-        toast("Ran now successfully");
+        toast("Ran successfully");
       } else {
         toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
       }
-    } catch (err) {
-      toast(formatError(err), { error: true });
+    } else {
+      const deviceId = document.getElementById("device-select").value;
+      if (!deviceId) {
+        toast("Select a device first", { error: true });
+        return;
+      }
+      const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
+      let payload;
+      if (actionMode === "preset") {
+        const presetId = document.getElementById("preset-select").value;
+        if (!presetId) {
+          toast("Select a preset first", { error: true });
+          return;
+        }
+        payload = { ps: Number(presetId) };
+      } else {
+        const on = document.querySelector('input[name="on_off"]:checked').value === "on";
+        payload = { on };
+        if (on) {
+          payload.bri = percentToBri(Number(document.getElementById("brightness").value));
+          payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)] }];
+        }
+      }
+      const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
+      if (result.status === "success") {
+        toast("Ran successfully");
+      } else {
+        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
+      }
     }
-  } else {
-    // Creating a new schedule: set flag and submit the form
-    shouldRunNow = true;
-    document.getElementById("schedule-form").dispatchEvent(new Event("submit"));
+  } catch (err) {
+    toast(formatError(err), { error: true });
+  } finally {
+    btn.disabled = false;
   }
 });
 

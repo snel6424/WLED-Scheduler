@@ -3,7 +3,10 @@ devices are the one resource backed by a real network call rather than
 just the database.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -142,3 +145,17 @@ def delete_device(device_id: str, db: Session = Depends(get_db)) -> None:
     device = _get_device_or_404(db, device_id)
     db.delete(device)
     db.commit()
+
+
+class _ApplyBody(BaseModel):
+    payload: dict[str, Any]
+
+
+@router.post("/{device_id}/apply")
+def apply_state(device_id: str, body: _ApplyBody, db: Session = Depends(get_db)) -> dict:
+    device = _get_device_or_404(db, device_id)
+    try:
+        wled_client.post_state(device.host, body.payload)
+        return {"status": "success"}
+    except WledClientError as exc:
+        return {"status": "error", "error_message": str(exc)}

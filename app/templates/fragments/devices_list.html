@@ -54,14 +54,15 @@
 </div>
 {% else %}
 {% for device in devices %}
-<a class="row" href="/devices/{{ device.id }}" style="display:flex; align-items:center; text-decoration:none; color:inherit;">
+<a class="row" href="/devices/{{ device.id }}" data-id="{{ device.id }}" style="display:flex; align-items:center; text-decoration:none; color:inherit;">
+  <button type="button" class="delete-mode-btn" aria-label="Delete" tabindex="-1"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
   <div id="device-icon-{{ device.id }}"
        class="icon-avatar {{ 'icon-avatar--sun' if (device.online and device.powered_on) else 'icon-avatar--moon' }}"
        style="margin-right: 1rem;">
     {% if device.icon and device.icon in picker_icon_svgs %}
     {{ picker_icon_svgs[device.icon] | safe }}
     {% else %}
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+    {{ picker_icon_svgs['lightbulb'] | safe }}
     {% endif %}
   </div>
   <div class="row__main">

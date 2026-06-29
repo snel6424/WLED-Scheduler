@@ -7,26 +7,18 @@ thin slices of the same data shaped for incremental DOM updates.
 """
 
 import json
-<<<<<<< HEAD
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
-=======
-from pathlib import Path
->>>>>>> main
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config
 from app.database import get_db
-<<<<<<< HEAD
 from app.models import Device, Schedule, ScheduleExecution, Settings
-=======
-from app.models import Device, Schedule
->>>>>>> main
 from app.schemas import DeviceRead, ScheduleRead
 
 router = APIRouter(tags=["pages"])
@@ -78,7 +70,6 @@ templates.env.globals.update(
     picker_icon_svgs=PICKER_ICON_SVGS,
 )
 
-<<<<<<< HEAD
 # SVGs for status-based fallback icons in history (matches historyIcon() in icons.js).
 _HISTORY_FALLBACK_SVG = {
     "success": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" /></svg>',
@@ -153,14 +144,14 @@ def _prepare_history(
             "status_color": _HISTORY_STATUS_COLOR[status],
             "status_class": _HISTORY_STATUS_CLASS[status],
             "avatar_svg": sched_icon or _HISTORY_FALLBACK_SVG[status],
+            "device_id": e.device.id,
             "device_name": e.device.name,
             "device_icon_svg": device_icon,
             "error_message": e.error_message,
         })
     return result
 
-=======
->>>>>>> main
+
 
 def _device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
     """Fetch all devices and compute the derived `online` field via the
@@ -178,8 +169,8 @@ def _device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
 def _schedule_reads(
     db: Session, status_filter: str = "all", device_id: str | None = None
 ) -> list[ScheduleRead]:
-    stmt = select(Schedule).order_by(Schedule.name)
-    if device_id is not None:
+    stmt = select(Schedule).order_by(func.lower(Schedule.name))
+    if device_id:
         stmt = stmt.where(Schedule.device_id == device_id)
     rows = list(db.execute(stmt).scalars())
     reads = [ScheduleRead.model_validate(s) for s in rows]
@@ -200,9 +191,10 @@ def _schedule_reads(
 @router.get("/")
 def index(request: Request, db: Session = Depends(get_db)):
     schedules = _schedule_reads(db)
+    devices = list(db.execute(select(Device).order_by(Device.name)).scalars())
     return templates.TemplateResponse(
         request, "schedules.html",
-        {"active_page": "schedules", "schedules": schedules, "device_id": None},
+        {"active_page": "schedules", "schedules": schedules, "devices": devices, "device_id": None},
     )
 
 
@@ -244,9 +236,10 @@ def schedules_page(
     request: Request, device_id: str | None = None, db: Session = Depends(get_db)
 ):
     schedules = _schedule_reads(db, device_id=device_id)
+    devices = list(db.execute(select(Device).order_by(Device.name)).scalars())
     return templates.TemplateResponse(
         request, "schedules.html",
-        {"active_page": "schedules", "schedules": schedules, "device_id": device_id},
+        {"active_page": "schedules", "schedules": schedules, "devices": devices, "device_id": device_id},
     )
 
 
@@ -316,7 +309,6 @@ def schedules_list_fragment(
         request, "fragments/schedules_list.html",
         {"schedules": schedules, "filter": filter, "device_id": device_id},
     )
-<<<<<<< HEAD
 
 
 @router.get("/fragments/history/entries")
@@ -370,5 +362,3 @@ def history_entries_fragment(
             "since": since,
         },
     )
-=======
->>>>>>> main

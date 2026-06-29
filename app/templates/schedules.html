@@ -12,38 +12,54 @@
   </a>
 </div>
 
-{% if device_id and schedules %}
-<p>Showing schedules for <strong>{{ schedules[0].device.name }}</strong> · <a href="/schedules">Show all</a></p>
-{% endif %}
-
-{# Bake device_id (if any) into every fragment URL so filter swaps stay scoped to the same device. #}
-{% set frag_prefix = ('/fragments/schedules/list?device_id=' ~ device_id ~ '&filter=') if device_id else '/fragments/schedules/list?filter=' %}
-
-{# Alpine owns active-pill state; htmx fetches the matching list fragment on each click. #}
-<div x-data="{ filter: 'all' }" class="filter-row" id="filter-row">
-  <button class="filter-pill is-active" :class="{ 'is-active': filter === 'all' }"
-          @click="filter = 'all'"
-          hx-get="{{ frag_prefix }}all"
-          hx-target="#schedule-list"
-          hx-swap="innerHTML">All</button>
-  <button class="filter-pill" :class="{ 'is-active': filter === 'active' }"
-          @click="filter = 'active'"
-          hx-get="{{ frag_prefix }}active"
-          hx-target="#schedule-list"
-          hx-swap="innerHTML">Active</button>
-  <button class="filter-pill" :class="{ 'is-active': filter === 'inactive' }"
-          @click="filter = 'inactive'"
-          hx-get="{{ frag_prefix }}inactive"
-          hx-target="#schedule-list"
-          hx-swap="innerHTML">Inactive</button>
-  <button class="filter-pill" :class="{ 'is-active': filter === 'sun' }"
-          @click="filter = 'sun'"
-          hx-get="{{ frag_prefix }}sun"
-          hx-target="#schedule-list"
-          hx-swap="innerHTML">Sunrise / Sunset</button>
+<div class="field-row" style="margin-bottom: 1.5rem;">
+  <div class="field">
+    <label for="device-filter">Device</label>
+    <select id="device-filter" name="device_id"
+            hx-get="/fragments/schedules/list"
+            hx-trigger="change"
+            hx-target="#schedule-list"
+            hx-swap="innerHTML"
+            hx-include="#active-filter">
+      <option value="">All Devices</option>
+      {% for device in devices %}
+      <option value="{{ device.id }}"{% if device.id == device_id %} selected{% endif %}>{{ device.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
 </div>
 
-<div class="list" id="schedule-list">
+{# Alpine owns active-pill state; htmx fetches the matching list fragment on each click. #}
+{# active-filter hidden input lets the device select know the current filter when it changes. #}
+<div x-data="{ filter: 'all' }" class="filter-row" id="filter-row">
+  <input type="hidden" id="active-filter" name="filter" :value="filter">
+  <button class="filter-pill is-active" :class="{ 'is-active': filter === 'all' }"
+          @click="filter = 'all'"
+          hx-get="/fragments/schedules/list?filter=all"
+          hx-target="#schedule-list"
+          hx-swap="innerHTML"
+          hx-include="#device-filter">All</button>
+  <button class="filter-pill" :class="{ 'is-active': filter === 'active' }"
+          @click="filter = 'active'"
+          hx-get="/fragments/schedules/list?filter=active"
+          hx-target="#schedule-list"
+          hx-swap="innerHTML"
+          hx-include="#device-filter">Active</button>
+  <button class="filter-pill" :class="{ 'is-active': filter === 'inactive' }"
+          @click="filter = 'inactive'"
+          hx-get="/fragments/schedules/list?filter=inactive"
+          hx-target="#schedule-list"
+          hx-swap="innerHTML"
+          hx-include="#device-filter">Inactive</button>
+  <button class="filter-pill" :class="{ 'is-active': filter === 'sun' }"
+          @click="filter = 'sun'"
+          hx-get="/fragments/schedules/list?filter=sun"
+          hx-target="#schedule-list"
+          hx-swap="innerHTML"
+          hx-include="#device-filter">Sunrise / Sunset</button>
+</div>
+
+<div class="list" id="schedule-list" style="gap: var(--space-2);">
   {# Initial server-side render. The fragment at /fragments/schedules/list
      returns the same row markup for filter swaps, so the two places must
      stay in sync if the row structure changes. #}
@@ -58,6 +74,7 @@
   {% set is_evening = hour < 5 or hour >= 18 %}
   {% set use_sun_icon = schedule.trigger_type.value == 'sunrise' or (schedule.trigger_type.value == 'time' and not is_evening) %}
   <a class="row" data-id="{{ schedule.id }}" href="/schedules/{{ schedule.id }}/edit" style="display:block; text-decoration:none; color:inherit; cursor:pointer;">
+    <button type="button" class="delete-mode-btn" aria-label="Delete" tabindex="-1"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
     <div class="schedule-row">
       <div class="icon-avatar {{ 'icon-avatar--sun' if use_sun_icon else 'icon-avatar--moon' }}">
         {% if schedule.icon and schedule.icon in picker_icon_svgs %}
@@ -90,7 +107,7 @@
           </label>
         </div>
         <div class="schedule-row__footer">
-          <span class="tag">{% if schedule.device.icon and schedule.device.icon in picker_icon_svgs %}{{ picker_icon_svgs[schedule.device.icon] | safe }}{% else %}<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>{% endif %}{{ schedule.device.name }}</span>
+          <span class="tag">{% if schedule.device.icon and schedule.device.icon in picker_icon_svgs %}{{ picker_icon_svgs[schedule.device.icon] | safe }}{% else %}{{ picker_icon_svgs['lightbulb'] | safe }}{% endif %}{{ schedule.device.name }}</span>
           <span class="schedule-row__chevron" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </div>
       </div>

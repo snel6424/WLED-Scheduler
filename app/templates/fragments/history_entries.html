@@ -19,12 +19,12 @@
         <span style="color:{{ entry.status_color }};">{{ entry.status_label }}</span>
       </div>
       <div class="row__meta">
-        <span class="tag">
+        <a class="tag" href="/devices/{{ entry.device_id }}" style="text-decoration:none;">
           {% if entry.device_icon_svg %}
             {{ entry.device_icon_svg | safe }}
           {% else %}
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
-          {% endif %}{{ entry.device_name }}</span>{% if entry.error_message %}<span class="muted" style="margin-left:0.5rem;">{{ entry.error_message }}</span>{% endif %}
+            {{ picker_icon_svgs['lightbulb'] | safe }}
+          {% endif %}{{ entry.device_name }}</a>{% if entry.error_message %}<span class="muted" style="margin-left:0.5rem;">{{ entry.error_message }}</span>{% endif %}
       </div>
     </div>
     <div class="row__meta mono" style="flex-shrink:0; margin-left:0.5rem;">{{ entry.time_str }}</div>

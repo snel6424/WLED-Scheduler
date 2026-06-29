@@ -1131,6 +1131,13 @@ input[type="number"] {
   justify-content: center;
 }
 
+/* Brightness + color side-by-side layout */
+#brightness-color-fields {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
 /* Range slider (brightness) */
 input[type="range"] {
   width: 100%;
@@ -1178,4 +1185,84 @@ input[type="color"] {
 }
 .form-actions .btn {
   flex: 0 1 auto;
+}
+
+/* ── long-press delete mode ─────────────────────────────────────────────── */
+
+.delete-mode-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  border: 2px solid var(--bg);
+  padding: 0;
+  cursor: pointer;
+  /* hidden by default; shown only when parent list has .is-delete-mode */
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.list.is-delete-mode .row {
+  position: relative;
+}
+.list.is-delete-mode .delete-mode-btn {
+  display: flex;
+  animation: delete-btn-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes delete-btn-pop {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* ── delete confirmation dialog ─────────────────────────────────────────── */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+.confirm-dialog {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  max-width: 300px;
+  width: 100%;
+  box-shadow: var(--shadow-modal);
+}
+.confirm-dialog__title {
+  margin: 0 0 var(--space-2);
+  font-size: 1.05rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+.confirm-dialog__body {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0 0 var(--space-3);
+}
+.confirm-dialog__no-ask {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: var(--space-4);
+  user-select: none;
+}
+.confirm-dialog__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
 }

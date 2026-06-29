@@ -4,17 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}WLED Scheduler{% endblock %}</title>
-<<<<<<< HEAD
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='favicon-16.png') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='favicon-180.png') }}">
-=======
->>>>>>> main
   <script>if(localStorage.getItem('theme')==='light')document.documentElement.dataset.theme='light'</script>
   <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
   <script defer src="{{ url_for('static', path='js/alpine.min.js') }}"></script>
   <script src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
   <script src="{{ url_for('static', path='js/api.js') }}"></script>
+  <script src="{{ url_for('static', path='js/longpress-delete.js') }}"></script>
 </head>
 <body hx-history="false">
   <div class="app">
@@ -41,6 +39,20 @@
     </nav>
   </div>
   <div class="toast-region" id="toast-region"></div>
+  <div id="delete-confirm-backdrop" class="confirm-backdrop" hidden>
+    <div class="confirm-dialog">
+      <h3 class="confirm-dialog__title">Delete "<span id="delete-confirm-item-name"></span>"?</h3>
+      <p class="confirm-dialog__body">This can't be undone.</p>
+      <label class="confirm-dialog__no-ask">
+        <input type="checkbox" id="delete-confirm-no-ask">
+        Don't ask again
+      </label>
+      <div class="confirm-dialog__actions">
+        <button type="button" id="delete-confirm-cancel" class="btn">Cancel</button>
+        <button type="button" id="delete-confirm-ok" class="btn btn--danger">Delete</button>
+      </div>
+    </div>
+  </div>
   {% block scripts %}{% endblock %}
 </body>
 </html>
