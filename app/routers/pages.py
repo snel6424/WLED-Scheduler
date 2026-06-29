@@ -7,9 +7,13 @@ thin slices of the same data shaped for incremental DOM updates.
 """
 
 import json
+<<<<<<< HEAD
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+=======
+from pathlib import Path
+>>>>>>> main
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates
@@ -18,7 +22,11 @@ from sqlalchemy.orm import Session
 
 from app import config
 from app.database import get_db
+<<<<<<< HEAD
 from app.models import Device, Schedule, ScheduleExecution, Settings
+=======
+from app.models import Device, Schedule
+>>>>>>> main
 from app.schemas import DeviceRead, ScheduleRead
 
 router = APIRouter(tags=["pages"])
@@ -70,6 +78,7 @@ templates.env.globals.update(
     picker_icon_svgs=PICKER_ICON_SVGS,
 )
 
+<<<<<<< HEAD
 # SVGs for status-based fallback icons in history (matches historyIcon() in icons.js).
 _HISTORY_FALLBACK_SVG = {
     "success": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" /></svg>',
@@ -150,6 +159,8 @@ def _prepare_history(
         })
     return result
 
+=======
+>>>>>>> main
 
 def _device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
     """Fetch all devices and compute the derived `online` field via the
@@ -305,6 +316,7 @@ def schedules_list_fragment(
         request, "fragments/schedules_list.html",
         {"schedules": schedules, "filter": filter, "device_id": device_id},
     )
+<<<<<<< HEAD
 
 
 @router.get("/fragments/history/entries")
@@ -358,3 +370,5 @@ def history_entries_fragment(
             "since": since,
         },
     )
+=======
+>>>>>>> main
