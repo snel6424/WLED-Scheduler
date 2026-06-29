@@ -1,0 +1,12 @@
+{
+  "name": "wled-scheduler-icon-generator",
+  "private": true,
+  "version": "1.0.0",
+  "description": "One-time script that generates icons.js and lucide_icons.json from the Lucide icon set.",
+  "scripts": {
+    "generate": "node generate-icons.js"
+  },
+  "dependencies": {
+    "lucide-static": "^0.511.0"
+  }
+}

@@ -46,18 +46,29 @@ const STATUS_LABEL = { success: "Successful", failed: "Failed", skipped: "Skippe
 const STATUS_COLOR = { success: "var(--success)", failed: "var(--danger)", skipped: "var(--text-muted)" };
 
 function entryHtml(entry) {
-  const { icon, className } = historyIcon(entry.status);
+  const { icon: statusIcon, className } = historyIcon(entry.status);
+  // Use the schedule's custom icon glyph if set, otherwise fall back to the status icon.
+  const glyph = (entry.schedule.icon && ICONS[entry.schedule.icon])
+    ? ICONS[entry.schedule.icon]
+    : statusIcon;
+  // Device tag mirrors the schedules page tag: device icon if set, lightbulb fallback.
+  const deviceGlyph = (entry.device.icon && ICONS[entry.device.icon])
+    ? ICONS[entry.device.icon]
+    : ICONS.bulb;
   const time = new Date(entry.fired_at.endsWith("Z") ? entry.fired_at : entry.fired_at + "Z").toLocaleTimeString(
     "en-US", { hour: "numeric", minute: "2-digit" }
   );
   return `
     <div class="row" style="display:flex; align-items:center;">
-      <div class="icon-avatar ${className}" style="margin-right:1rem; flex-shrink:0;">${icon}</div>
+      <div class="icon-avatar ${className}" style="margin-right:1rem; flex-shrink:0;">${glyph}</div>
       <div class="row__main">
         <div class="row__title">${escapeHtml(entry.schedule.name)} - ${actionLabel(entry.action)} -
           <span style="color:${STATUS_COLOR[entry.status]};">${STATUS_LABEL[entry.status]}</span>
         </div>
-        <div class="row__meta">${escapeHtml(entry.device.name)}${entry.error_message ? ` · ${escapeHtml(entry.error_message)}` : ""}</div>
+        <div class="row__meta" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <span class="tag">${deviceGlyph}${escapeHtml(entry.device.name)}</span>
+          ${entry.error_message ? `<span class="muted">${escapeHtml(entry.error_message)}</span>` : ""}
+        </div>
       </div>
       <div class="row__meta mono" style="flex-shrink:0; margin-left: 0.5rem;">${time}</div>
     </div>`;

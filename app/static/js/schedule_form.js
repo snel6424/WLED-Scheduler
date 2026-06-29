@@ -171,6 +171,8 @@ async function loadExistingSchedule() {
   const schedule = await apiGet(`/api/schedules/${SCHEDULE_ID}`);
 
   document.getElementById("name").value = schedule.name;
+  document.getElementById("description").value = schedule.description || "";
+  document.dispatchEvent(new CustomEvent("set-icon", { detail: schedule.icon ?? null }));
   setRadio("trigger_type", schedule.trigger_type);
   if (schedule.trigger_type === "time") {
     document.getElementById("time-of-day").value = schedule.time_of_day.slice(0, 5);
@@ -221,6 +223,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     // field from before the switch.
     const schedulePayload = {
       name: document.getElementById("name").value.trim(),
+      description: document.getElementById("description").value.trim() || null,
       device_id: document.getElementById("device-select").value,
       trigger_type: triggerType,
       time_of_day: triggerType === "time" ? document.getElementById("time-of-day").value + ":00" : null,
@@ -229,6 +232,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
       start_date: document.getElementById("start-date").value || null,
       end_date: document.getElementById("end-date").value || null,
       repeat_annually: document.getElementById("repeat-annually").checked,
+      icon: document.getElementById("schedule-icon")?.value || null,
     };
 
     const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
@@ -327,18 +331,24 @@ document.getElementById("delete-btn")?.addEventListener("click", async () => {
 });
 
 async function init() {
-  await loadSettings();
-  if (SCHEDULE_ID) {
-    await loadExistingSchedule();
-  } else {
-    setDayToggles(127);
-    await loadDevices();
+  const saveBtn = document.getElementById("save-btn");
+  saveBtn.disabled = true;
+  try {
+    await loadSettings();
+    if (SCHEDULE_ID) {
+      await loadExistingSchedule();
+    } else {
+      setDayToggles(127);
+      await loadDevices();
+    }
+    // Alpine's x-show handles triggerType / actionMode / onOff visibility.
+    // updateActionModeVisibility still runs here to trigger preset loading
+    // when editing an existing preset schedule.
+    updateActionModeVisibility();
+    updateRepeatAnnuallyVisibility();
+  } finally {
+    updateSaveButtonState();
   }
-  // Alpine's x-show handles triggerType / actionMode / onOff visibility.
-  // updateActionModeVisibility still runs here to trigger preset loading
-  // when editing an existing preset schedule.
-  updateActionModeVisibility();
-  updateRepeatAnnuallyVisibility();
 }
 
 init();

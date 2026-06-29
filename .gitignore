@@ -23,3 +23,8 @@ venv/
 .idea/
 dl/
 docker-compose.override.yml
+CLAUDE.md
+
+# Icon generator (node_modules are local-only; package-lock.json is noisy for a one-shot script)
+scripts/node_modules/
+scripts/package-lock.json

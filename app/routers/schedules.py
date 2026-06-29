@@ -86,6 +86,7 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> S
 
     schedule = Schedule(
         name=payload.name,
+        description=payload.description,
         device_id=payload.device_id,
         action_id=payload.action_id,
         trigger_type=payload.trigger_type,
@@ -96,6 +97,7 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> S
         end_date=payload.end_date,
         repeat_annually=payload.repeat_annually,
         enabled=payload.enabled,
+        icon=payload.icon,
     )
     _recompute_next_run_at(db, schedule)  # may raise 422 before anything is added
     db.add(schedule)
@@ -146,6 +148,10 @@ def update_schedule(
     schedule.end_date = validated.end_date
     schedule.repeat_annually = validated.repeat_annually
     schedule.enabled = validated.enabled
+    if "icon" in update_fields:
+        schedule.icon = update_fields["icon"]
+    if "description" in update_fields:
+        schedule.description = update_fields["description"]
 
     if _TRIGGER_FIELDS & update_fields.keys():
         _recompute_next_run_at(db, schedule)  # may raise 422
