@@ -1,0 +1,111 @@
+{% macro render(field_id, current_icon=None) %}
+{#
+  Icon picker — modal popup pattern.
+
+  Default usage renders a circular trigger button (shows chosen icon or a "+"
+  placeholder). Call-block usage lets the caller supply any element as the
+  trigger inside the same Alpine scope — useful when an existing avatar should
+  open the picker rather than a separate button:
+
+    {% call icon_picker('field-id') %}
+      <button class="icon-avatar …" @click="pending = icon; open = true">…</button>
+    {% endcall %}
+
+  The component also listens for a `set-icon` document event so JS can set
+  the initial value after loading a record asynchronously:
+    document.dispatchEvent(new CustomEvent('set-icon', { detail: schedule.icon }))
+
+  `PICKER_ICONS` and `ICONS` must be available (icons.js loaded before Alpine).
+#}
+<div x-data="{
+       icon: {{ current_icon | tojson }},
+       open: false,
+       pending: null,
+       search: '',
+       iconSearch(q) {
+         const s = (q || '').trim().toLowerCase();
+         if (!s) return PICKER_ICONS.slice(0, 250);
+         return PICKER_ICONS.filter(o =>
+           o.key.toLowerCase().includes(s) || o.label.toLowerCase().includes(s)
+         ).slice(0, 250);
+       }
+     }"
+     @set-icon.document="icon = $event.detail"
+     x-effect="if (open) { search = ''; $nextTick(() => $refs.pickerSearch && $refs.pickerSearch.focus()) }">
+
+  <input type="hidden" id="{{ field_id }}" :value="icon ?? ''">
+
+  {# Caller-supplied trigger (e.g. an existing avatar), or default button #}
+  {% if caller is defined %}
+    {{ caller() }}
+  {% else %}
+    <button type="button"
+            class="icon-picker-trigger"
+            :class="{ 'icon-picker-trigger--set': icon !== null }"
+            @click="pending = icon; open = true"
+            :title="icon ? 'Change icon' : 'Set icon (optional)'">
+      <template x-if="icon">
+        <span x-html="ICONS[icon]"></span>
+      </template>
+      <template x-if="!icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </template>
+    </button>
+  {% endif %}
+
+  {# Modal backdrop — click outside to cancel #}
+  <div x-show="open" x-cloak
+       class="icon-picker-backdrop"
+       @click.self="open = false"
+       @keydown.escape.window="open = false">
+    <div class="icon-picker-modal">
+      <div class="icon-picker-modal__header">
+        <span>Icon</span>
+        <input type="search"
+               x-model="search"
+               x-ref="pickerSearch"
+               @keydown.escape.stop="open = false"
+               placeholder="Search icons…"
+               class="icon-picker-search"
+               autocomplete="off"
+               spellcheck="false">
+      </div>
+
+      <div class="icon-picker icon-picker--modal">
+        {# "Default" restores the auto-derived icon; hidden during search #}
+        <button type="button"
+                class="icon-picker__btn icon-picker__btn--auto"
+                :class="{ 'is-selected': pending === null }"
+                x-show="!search.trim()"
+                @click="pending = null">Default</button>
+        <template x-for="opt in iconSearch(search)" :key="opt.key">
+          <button type="button"
+                  class="icon-picker__btn"
+                  :class="{ 'is-selected': pending === opt.key }"
+                  @click="pending = opt.key"
+                  :title="opt.label"
+                  x-html="ICONS[opt.key]">
+          </button>
+        </template>
+        <p class="icon-picker__empty"
+           x-show="search.trim() && iconSearch(search).length === 0"
+           x-cloak>No icons match</p>
+      </div>
+
+      <div class="icon-picker-modal__footer">
+        <span class="icon-picker__count muted"
+              x-text="search.trim()
+                ? iconSearch(search).length + ' result' + (iconSearch(search).length === 1 ? '' : 's')
+                : PICKER_ICONS.length + ' icons'">
+        </span>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn" @click="open = false">Cancel</button>
+          <button type="button" class="btn btn--primary"
+                  @click="icon = pending; open = false; document.dispatchEvent(new CustomEvent('icon-picker-confirmed', { detail: { icon: pending } }))">Select</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endmacro %}

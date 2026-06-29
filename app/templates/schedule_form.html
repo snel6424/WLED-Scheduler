@@ -15,13 +15,41 @@
    several of these elements via CSS specificity. #}
 <form id="schedule-form" x-data="scheduleFormVis">
 
-  <div class="input-row" style="margin-bottom: 1.5rem;">
+  {% from 'macros/icon_picker.html' import render as icon_picker %}
+
+  <div style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+    {% call icon_picker('schedule-icon') %}
+      <button type="button"
+              class="icon-avatar icon-avatar--moon icon-avatar--editable"
+              style="width:56px; height:56px;"
+              @click="pending = icon; open = true"
+              title="Change icon">
+        <template x-if="icon">
+          <span x-html="ICONS[icon]"></span>
+        </template>
+        <template x-if="!icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/><path d="M18 3v2M19 4h2"/></svg>
+        </template>
+      </button>
+    {% endcall %}
+  </div>
+
+  <div class="input-row" style="margin-bottom: 0;">
     <div class="input-row__icon">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
     </div>
     <div class="input-row__body">
       <label for="name">Schedule name</label>
       <input type="text" id="name" required placeholder="Evening Lights">
+    </div>
+  </div>
+  <div class="input-row" style="margin-top: 1px; margin-bottom: 1.5rem;">
+    <div class="input-row__icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/></svg>
+    </div>
+    <div class="input-row__body">
+      <label for="description">Description <span class="muted" style="font-weight: normal;">(optional)</span></label>
+      <input type="text" id="description" placeholder="e.g. Dim the kitchen lights at bedtime" maxlength="500">
     </div>
   </div>
 

@@ -3,6 +3,7 @@
 
 {% block content %}
 <script>const DEVICE_ID = {{ device_id | tojson }};</script>
+{% from 'macros/icon_picker.html' import render as icon_picker %}
 
 <div style="margin-bottom: 1.5rem;">
   <a href="/devices" style="display:flex; align-items:center; gap: 0.25rem; color: var(--accent-strong); font-weight: 700;">
@@ -12,9 +13,17 @@
 </div>
 
 <div style="display:flex; align-items:center; gap: 1rem; margin-bottom: 1.5rem;">
-  <div class="icon-avatar icon-avatar--moon" id="device-icon" style="width:64px; height:64px;">
-    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
-  </div>
+  {% call icon_picker('device-icon-picker') %}
+    <button type="button"
+            class="icon-avatar icon-avatar--moon icon-avatar--editable"
+            id="device-icon"
+            style="width:64px; height:64px;"
+            @click="pending = icon; open = true"
+            title="Change icon"
+            x-effect="icon && ($el.innerHTML = _deviceGlyph(icon, 28))">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+    </button>
+  {% endcall %}
   <div>
     <h1 id="device-name" style="margin-bottom: 2px;">&nbsp;</h1>
     <div class="muted" id="device-room" style="font-size: 0.9rem;"></div>

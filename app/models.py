@@ -96,6 +96,10 @@ class Device(TimestampMixin, Base):
     # palette count, firmware version. Refreshed on add and on manual refresh.
     capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Optional icon key from the icon picker (e.g. "tv", "sofa"). Null means
+    # use the generic bulb. Stored as a string key, not raw SVG.
+    icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     schedules: Mapped[list["Schedule"]] = relationship(
         back_populates="device", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -154,6 +158,7 @@ class Schedule(TimestampMixin, Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     device_id: Mapped[str] = mapped_column(
@@ -185,6 +190,10 @@ class Schedule(TimestampMixin, Base):
 
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Optional icon key override (e.g. "sofa", "music"). Null means derive the
+    # icon from trigger_type and time_of_day, which is the default behaviour.
+    icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     device: Mapped["Device"] = relationship(back_populates="schedules")
     action: Mapped["Action"] = relationship(back_populates="schedules")
