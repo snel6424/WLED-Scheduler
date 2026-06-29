@@ -132,3 +132,16 @@ async function init() {
 }
 
 init().catch((err) => toast(formatError(err), { error: true }));
+
+// Theme toggle — persisted in localStorage, not the Settings table (per-browser preference)
+const themeToggle = document.getElementById("theme-toggle");
+themeToggle.checked = localStorage.getItem("theme") === "light";
+themeToggle.addEventListener("change", () => {
+  if (themeToggle.checked) {
+    document.documentElement.dataset.theme = "light";
+    localStorage.setItem("theme", "light");
+  } else {
+    delete document.documentElement.dataset.theme;
+    localStorage.removeItem("theme");
+  }
+});

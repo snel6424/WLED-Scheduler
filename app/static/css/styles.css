@@ -1,33 +1,35 @@
 /* WLED Scheduler — design system
    ================================
-   Tokens below are extracted from a real mockup (a "Schedules" list
-   screen), not guessed. Warm near-black background, one vivid
-   indigo-violet accent for everything interactive, amber reserved
-   specifically for sunrise/sunset, soft large-radius shapes
-   throughout, and a single consistent rounded sans for all text
-   including time values, no monospace anywhere, that was a
-   deliberate choice in an earlier draft of this file but the mockup
-   doesn't use it, so it's gone.
+   Color tokens match the GitHub Dark palette (Primer design tokens).
+   Cool blue-gray backgrounds, GitHub's blue accent range, the same
+   green/red/amber semantics Primer uses for success/danger/attention.
+   Large-radius soft shapes and a single rounded system sans throughout.
 */
 
 :root {
-  /* Color */
-  --bg: #14131c;
-  --surface: #1e1c28;
-  --surface-raised: #262432;
-  --border: #2c2a38;
-  --text: #f5f3f7;
-  --text-muted: #93909e;
-  --accent: #6c63ff;
-  --accent-strong: #8079ff;
-  --accent-wash: rgba(108, 99, 255, 0.14);
-  --amber: #e8a23d;
-  --amber-wash: rgba(232, 162, 61, 0.14);
-  --amber-deep: #3d2e12;
-  --success: #4caf7d;
-  --danger: #f0584f;
-  --danger-wash: rgba(240, 88, 79, 0.14);
-  --toggle-off: #3a3845;
+  /* Color — GitHub Dark (Primer) */
+  --bg: #0d1117;            /* canvas.default */
+  --surface: #161b22;       /* canvas.subtle */
+  --surface-raised: #21262d;/* neutral.subtle */
+  --border: #30363d;        /* border.default */
+  --text: #e6edf3;          /* fg.default */
+  --text-muted: #8d96a0;    /* fg.muted */
+  --accent: #388bfd;        /* accent interactive fill */
+  --accent-strong: #58a6ff; /* accent.fg — links, icons, text */
+  --accent-wash: rgba(56, 139, 253, 0.15); /* accent.muted */
+  --amber: #d29922;         /* attention.fg */
+  --amber-wash: rgba(187, 128, 9, 0.15);   /* attention.muted */
+  --amber-deep: #1e1500;    /* deep amber surface for sun avatars */
+  --success: #3fb950;       /* success.fg */
+  --danger: #f85149;        /* danger.fg */
+  --danger-wash: rgba(248, 81, 73, 0.15);  /* danger.muted */
+  --toggle-off: #30363d;    /* inactive toggle track */
+  --moon-bg: #1c1734;       /* moon avatar / icon-picker-set bg */
+  --moon-fg: #a371f7;       /* moon avatar / icon-picker-set color */
+  --success-wash: rgba(63, 185, 80, 0.15); /* success.muted */
+  --backdrop: rgba(0, 0, 0, 0.55); /* modal overlay */
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.4); /* modal shadow */
+  --accent-glow: rgba(56, 139, 253, 0.7); /* FAB starburst glow */
 
   /* Type: one consistent rounded system sans, no monospace */
   --font-body: -apple-system, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
@@ -49,6 +51,34 @@
      exactly what caused the Run now/Delete buttons to sit partly
      behind the tab bar on the schedule form. */
   --tabbar-height: 76px;
+}
+
+/* Light theme — GitHub Light (Primer) palette
+   Override only the color tokens; scale/radius/font vars stay on :root. */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --surface-raised: #eaeef2;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --text-muted: #636c76;
+  --accent: #0969da;
+  --accent-strong: #0550ae;
+  --accent-wash: rgba(9, 105, 218, 0.1);
+  --amber: #9a6700;
+  --amber-wash: rgba(154, 103, 0, 0.1);
+  --amber-deep: #fffcdb;
+  --success: #1a7f37;
+  --success-wash: rgba(26, 127, 55, 0.1);
+  --danger: #d1242f;
+  --danger-wash: rgba(209, 36, 47, 0.1);
+  --toggle-off: #afb8c1;
+  --shadow: 0 1px 3px rgba(27, 31, 36, 0.12), 0 8px 24px rgba(27, 31, 36, 0.06);
+  --moon-bg: #fbefff;
+  --moon-fg: #8250df;
+  --backdrop: rgba(27, 31, 36, 0.3);
+  --shadow-modal: 0 8px 32px rgba(27, 31, 36, 0.2);
+  --accent-glow: rgba(9, 105, 218, 0.4);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -120,6 +150,12 @@ a:hover {
 
 svg {
   display: block;
+}
+
+/* Prevents Alpine-managed elements from flashing visible before Alpine
+   initialises. Add x-cloak to any element whose x-show starts false. */
+[x-cloak] {
+  display: none !important;
 }
 
 /* Several components below set `display: flex` directly on a class
@@ -266,15 +302,15 @@ svg {
 @keyframes starburst {
   0% {
     transform: scale(1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow);
   }
   50% {
     transform: scale(1.15);
-    box-shadow: 0 0 40px rgba(108, 99, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 40px var(--accent-glow), var(--shadow);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow);
   }
 }
 
@@ -316,6 +352,18 @@ svg {
 .row__meta {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.row__description {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 2px;
+<<<<<<< HEAD
+=======
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+>>>>>>> main
 }
 
 .row__actions {
@@ -520,8 +568,8 @@ legend {
   flex-shrink: 0;
 }
 .icon-avatar--moon {
-  background: #2b2640;
-  color: #c9c3f5;
+  background: var(--moon-bg);
+  color: var(--moon-fg);
 }
 .icon-avatar--sun {
   background: var(--amber-deep);
@@ -547,12 +595,18 @@ legend {
   justify-content: space-between;
   gap: var(--space-3);
 }
+.schedule-row__when {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
 .schedule-row__time {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   font-weight: 700;
-  margin-top: var(--space-1);
 }
 .schedule-row__time svg {
   width: 16px;
@@ -678,7 +732,7 @@ input[type="number"] {
 }
 .badge--success {
   color: var(--success);
-  background: rgba(76, 175, 125, 0.14);
+  background: var(--success-wash);
 }
 .badge--danger {
   color: var(--danger);
@@ -868,6 +922,155 @@ input[type="number"] {
   height: 24px;
   flex-shrink: 0;
   cursor: pointer;
+}
+
+/* ── Icon picker ─────────────────────────────────────────────────── */
+
+/* Trigger: the small circle the user clicks to open the picker */
+.icon-picker-trigger {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px dashed var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, opacity 0.15s;
+}
+.icon-picker-trigger--set {
+  border: none;
+  background: var(--moon-bg);
+  color: var(--moon-fg);
+}
+.icon-picker-trigger:not(.icon-picker-trigger--set):hover {
+  border-color: var(--accent-strong);
+  color: var(--text);
+  background: var(--accent-wash);
+}
+.icon-picker-trigger--set:hover {
+  opacity: 0.8;
+}
+.icon-avatar--editable {
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+.icon-avatar--editable:hover {
+  opacity: 0.8;
+}
+
+/* Backdrop */
+.icon-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+/* Modal card */
+.icon-picker-modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  width: min(480px, 96vw);
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+.icon-picker-modal__header {
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.icon-picker-modal__header > span:first-child {
+  font-weight: 700;
+}
+.icon-picker-search {
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  outline: none;
+}
+.icon-picker-search:focus {
+  border-color: var(--accent-strong);
+}
+.icon-picker-modal__footer {
+  padding: 0.6rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.icon-picker__count {
+  font-size: 0.8rem;
+}
+.icon-picker__empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0;
+  width: 100%;
+  text-align: center;
+}
+
+/* Grid inside the modal */
+.icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.icon-picker--modal {
+  padding: 0.875rem 1.25rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.icon-picker__btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.icon-picker__btn:hover {
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+.icon-picker__btn.is-selected {
+  border-color: var(--accent-strong);
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.icon-picker__btn--auto {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 /* Date row for side-by-side layout */

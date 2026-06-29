@@ -8,6 +8,15 @@ function signalLabel(percent) {
   return `Weak (${percent}%)`;
 }
 
+function _deviceGlyph(iconKey, size) {
+  if (iconKey && ICONS[iconKey]) {
+    return ICONS[iconKey]
+      .replace(/width="\d+"/, `width="${size}"`)
+      .replace(/height="\d+"/, `height="${size}"`);
+  }
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>`;
+}
+
 function renderDeviceInfo(device) {
   document.getElementById("device-name").textContent = device.name;
   document.getElementById("device-room").textContent = device.room || "No room set";
@@ -15,6 +24,9 @@ function renderDeviceInfo(device) {
   const icon = document.getElementById("device-icon");
   icon.classList.remove("icon-avatar--sun", "icon-avatar--moon");
   icon.classList.add(device.online && device.powered_on ? "icon-avatar--sun" : "icon-avatar--moon");
+  icon.innerHTML = _deviceGlyph(device.icon, 28);
+
+  document.dispatchEvent(new CustomEvent("set-icon", { detail: device.icon ?? null }));
 
   const statusEl = document.getElementById("device-status");
   const detailEl = document.getElementById("device-status-detail");
@@ -57,6 +69,16 @@ document.getElementById("edit-name-row").addEventListener("click", () => {
 });
 document.getElementById("cancel-edit-btn").addEventListener("click", () => {
   document.getElementById("edit-card").hidden = true;
+});
+
+document.addEventListener("icon-picker-confirmed", async (e) => {
+  try {
+    const icon = (e.detail && e.detail.icon) ?? null;
+    const device = await apiPatch(`/api/devices/${DEVICE_ID}`, { icon });
+    renderDeviceInfo(device);
+  } catch (err) {
+    toast(formatError(err), { error: true });
+  }
 });
 
 document.getElementById("save-edit-btn").addEventListener("click", async () => {

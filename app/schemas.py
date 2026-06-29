@@ -112,6 +112,7 @@ class DeviceCreate(BaseModel):
 class DeviceUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     room: str | None = Field(None, max_length=100)
+    icon: str | None = Field(None, max_length=50)
 
 
 class DeviceRead(BaseModel):
@@ -123,6 +124,7 @@ class DeviceRead(BaseModel):
     last_seen_at: datetime | None
     capabilities: dict | None
     powered_on: bool | None
+    icon: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -152,6 +154,7 @@ class DeviceSummary(BaseModel):
     id: str
     name: str
     host: str
+    icon: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -194,6 +197,7 @@ class SettingsUpdate(BaseModel):
 
 class ScheduleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
     device_id: str
     action_id: str
     trigger_type: TriggerType
@@ -204,6 +208,7 @@ class ScheduleBase(BaseModel):
     end_date: date | None = None
     repeat_annually: bool = False
     enabled: bool = True
+    icon: str | None = Field(None, max_length=50)
 
     @model_validator(mode="after")
     def validate_trigger_fields(self) -> "ScheduleBase":
@@ -232,6 +237,7 @@ class ScheduleCreate(ScheduleBase):
 
 class ScheduleUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
     device_id: str | None = None
     action_id: str | None = None
     trigger_type: TriggerType | None = None
@@ -242,6 +248,7 @@ class ScheduleUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     repeat_annually: bool | None = None
+    icon: str | None = Field(None, max_length=50)
     # Same reasoning as ActionUpdate: trigger_type/time_of_day/offset_minutes
     # consistency is checked in the router after merging with the existing
     # row, since a partial body doesn't carry enough information alone.
@@ -250,6 +257,7 @@ class ScheduleUpdate(BaseModel):
 class ScheduleRead(BaseModel):
     id: str
     name: str
+    description: str | None
     enabled: bool
     trigger_type: TriggerType
     time_of_day: time | None
@@ -260,6 +268,7 @@ class ScheduleRead(BaseModel):
     repeat_annually: bool
     next_run_at: datetime | None
     last_run_at: datetime | None
+    icon: str | None
     device: DeviceSummary
     action: ActionRead
 
@@ -285,6 +294,7 @@ class ScheduleSummary(BaseModel):
 
     id: str
     name: str
+    icon: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
