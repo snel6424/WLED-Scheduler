@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}WLED Scheduler{% endblock %}</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='favicon-32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='favicon-16.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='favicon-180.png') }}">
   <script>if(localStorage.getItem('theme')==='light')document.documentElement.dataset.theme='light'</script>
   <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
   <script defer src="{{ url_for('static', path='js/alpine.min.js') }}"></script>

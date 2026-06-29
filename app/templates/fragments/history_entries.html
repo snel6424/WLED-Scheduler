@@ -1,0 +1,53 @@
+{# Date-grouped history entries. Returned for:
+   - initial load (hx-trigger="load" on #history-groups, hx-swap="innerHTML")
+   - filter changes (hx-swap="innerHTML")
+   - load-more clicks (hx-swap="beforeend")
+   Always includes an OOB swap that updates the load-more button's offset and
+   visibility so the button stays in sync without a separate request. #}
+
+{% for date_key, entries in groups.items() %}
+<h3 style="margin: 1.5rem 0 0.75rem;">{{ group_label(date_key, today) }}</h3>
+<div class="list">
+  {% for entry in entries %}
+  <div class="row" style="display:flex; align-items:center;">
+    <div class="icon-avatar {{ entry.status_class }}" style="margin-right:1rem; flex-shrink:0;">
+      {{ entry.avatar_svg | safe }}
+    </div>
+    <div class="row__main">
+      <div class="row__title">
+        {{ entry.schedule_name }} - {{ entry.action_str }} -
+        <span style="color:{{ entry.status_color }};">{{ entry.status_label }}</span>
+      </div>
+      <div class="row__meta">
+        <span class="tag">
+          {% if entry.device_icon_svg %}
+            {{ entry.device_icon_svg | safe }}
+          {% else %}
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>
+          {% endif %}{{ entry.device_name }}</span>{% if entry.error_message %}<span class="muted" style="margin-left:0.5rem;">{{ entry.error_message }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="row__meta mono" style="flex-shrink:0; margin-left:0.5rem;">{{ entry.time_str }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+{% if is_first_page %}
+<div class="empty">
+  <h2>No activity yet</h2>
+  <p>Schedule runs will show up here once they start firing.</p>
+</div>
+{% endif %}
+{% endfor %}
+
+{# OOB: keep load-more button offset and visibility in sync after every page. #}
+<button id="load-more-btn"
+        class="btn"
+        style="width:100%; margin-top:1rem;"
+        hx-get="/fragments/history/entries"
+        hx-include="#range-select, #device-filter"
+        hx-vals='{"offset": "{{ new_offset }}"}'
+        hx-target="#history-groups"
+        hx-swap="beforeend"
+        {% if not has_more %}hidden{% endif %}
+        hx-swap-oob="true">Load more</button>

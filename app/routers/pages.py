@@ -7,7 +7,9 @@ thin slices of the same data shaped for incremental DOM updates.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates
@@ -16,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app import config
 from app.database import get_db
-from app.models import Device, Schedule
+from app.models import Device, Schedule, ScheduleExecution, Settings
 from app.schemas import DeviceRead, ScheduleRead
 
 router = APIRouter(tags=["pages"])
@@ -67,6 +69,86 @@ templates.env.globals.update(
     format_sun_offset=_format_sun_offset,
     picker_icon_svgs=PICKER_ICON_SVGS,
 )
+
+# SVGs for status-based fallback icons in history (matches historyIcon() in icons.js).
+_HISTORY_FALLBACK_SVG = {
+    "success": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" /></svg>',
+    "failed":  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /></svg>',
+    "skipped": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" /> <line x1="19" x2="19" y1="5" y2="19" /></svg>',
+}
+_HISTORY_STATUS_CLASS = {
+    "success": "icon-avatar--sun",
+    "failed":  "icon-avatar--danger",
+    "skipped": "icon-avatar--moon",
+}
+_HISTORY_STATUS_LABEL = {"success": "Successful", "failed": "Failed", "skipped": "Skipped"}
+_HISTORY_STATUS_COLOR = {
+    "success": "var(--success)",
+    "failed":  "var(--danger)",
+    "skipped": "var(--text-muted)",
+}
+_PAGE_SIZE = 20
+
+
+def _history_action_label(action) -> str:
+    if action.type.value == "preset":
+        return f"Preset #{action.payload.get('ps', '?')}"
+    if action.payload.get("on") is False:
+        return "Turn Off"
+    return "Turn On"
+
+
+def _history_group_label(d, today) -> str:
+    from datetime import date as date_type, timedelta
+    if d == today:
+        return f"Today — {d.strftime('%B %-d, %Y')}"
+    if d == today - timedelta(days=1):
+        return f"Yesterday — {d.strftime('%B %-d, %Y')}"
+    return d.strftime('%B %-d, %Y')
+
+
+def _prepare_history(
+    executions: list,
+    tz,
+    today,
+) -> list[dict]:
+    """Convert raw ScheduleExecution ORM rows into flat dicts ready for the
+    history fragment template — all formatting resolved here so the template
+    stays dumb."""
+    result = []
+    for e in executions:
+        dt_utc = e.fired_at.replace(tzinfo=timezone.utc)
+        local_dt = dt_utc.astimezone(tz)
+        hour = local_dt.hour
+        time_str = f"{hour % 12 or 12}:{local_dt.minute:02d} {'PM' if hour >= 12 else 'AM'}"
+
+        action = e.schedule.action
+        if action.type.value == "preset":
+            action_str = f"Preset #{action.payload.get('ps', '?')}"
+        elif action.payload.get("on") is False:
+            action_str = "Turn Off"
+        else:
+            action_str = "Turn On"
+
+        status = e.status.value
+        sched_icon = PICKER_ICON_SVGS.get(e.schedule.icon) if e.schedule.icon else None
+        device_icon = PICKER_ICON_SVGS.get(e.device.icon) if e.device.icon else None
+
+        result.append({
+            "local_date": local_dt.date(),
+            "time_str": time_str,
+            "schedule_name": e.schedule.name,
+            "action_str": action_str,
+            "status": status,
+            "status_label": _HISTORY_STATUS_LABEL[status],
+            "status_color": _HISTORY_STATUS_COLOR[status],
+            "status_class": _HISTORY_STATUS_CLASS[status],
+            "avatar_svg": sched_icon or _HISTORY_FALLBACK_SVG[status],
+            "device_name": e.device.name,
+            "device_icon_svg": device_icon,
+            "error_message": e.error_message,
+        })
+    return result
 
 
 def _device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
@@ -129,9 +211,13 @@ def device_detail_page(request: Request, device_id: str):
 
 
 @router.get("/history")
-def history_overview_page(request: Request):
+def history_overview_page(
+    request: Request, device_id: str | None = None, db: Session = Depends(get_db)
+):
+    devices = list(db.execute(select(Device).order_by(Device.name)).scalars())
     return templates.TemplateResponse(
-        request, "history.html", {"active_page": "history", "schedule_id": None}
+        request, "history.html",
+        {"active_page": "history", "devices": devices, "device_id": device_id},
     )
 
 
@@ -168,9 +254,13 @@ def schedule_edit_page(request: Request, schedule_id: str):
 
 
 @router.get("/schedules/{schedule_id}/history")
-def schedule_history_page(request: Request, schedule_id: str):
+def schedule_history_page(
+    request: Request, schedule_id: str, db: Session = Depends(get_db)
+):
+    devices = list(db.execute(select(Device).order_by(Device.name)).scalars())
     return templates.TemplateResponse(
-        request, "history.html", {"active_page": "schedules", "schedule_id": schedule_id}
+        request, "history.html",
+        {"active_page": "schedules", "devices": devices, "device_id": None},
     )
 
 
@@ -214,4 +304,57 @@ def schedules_list_fragment(
     return templates.TemplateResponse(
         request, "fragments/schedules_list.html",
         {"schedules": schedules, "filter": filter, "device_id": device_id},
+    )
+
+
+@router.get("/fragments/history/entries")
+def history_entries_fragment(
+    request: Request,
+    device_id: str | None = None,
+    since: str = "7",
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    settings = db.get(Settings, 1)
+    try:
+        tz = ZoneInfo(settings.timezone) if settings and settings.timezone else timezone.utc
+    except Exception:
+        tz = timezone.utc
+
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.astimezone(tz).date()
+
+    stmt = select(ScheduleExecution).order_by(ScheduleExecution.fired_at.desc())
+    if device_id:
+        stmt = stmt.where(ScheduleExecution.device_id == device_id)
+    if since != "all":
+        cutoff = now_utc - timedelta(days=int(since))
+        stmt = stmt.where(ScheduleExecution.fired_at >= cutoff.replace(tzinfo=None))
+    stmt = stmt.offset(offset).limit(_PAGE_SIZE + 1)
+    rows = list(db.execute(stmt).scalars())
+    has_more = len(rows) > _PAGE_SIZE
+    rows = rows[:_PAGE_SIZE]
+
+    entries = _prepare_history(rows, tz, today)
+
+    # Group by local date, preserving order.
+    groups: dict = {}
+    for entry in entries:
+        d = entry["local_date"]
+        if d not in groups:
+            groups[d] = []
+        groups[d].append(entry)
+
+    return templates.TemplateResponse(
+        request, "fragments/history_entries.html",
+        {
+            "groups": groups,
+            "today": today,
+            "group_label": _history_group_label,
+            "new_offset": offset + len(entries),
+            "has_more": has_more,
+            "is_first_page": offset == 0,
+            "device_id": device_id,
+            "since": since,
+        },
     )
