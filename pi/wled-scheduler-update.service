@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply WLED Scheduler update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/wled-scheduler
+ExecStart=/opt/wled-scheduler/pi/apply_update.sh
+StandardOutput=journal
+StandardError=journal

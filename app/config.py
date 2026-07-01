@@ -20,6 +20,14 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
+# Controls whether the /api/update/apply endpoint can trigger an in-place
+# update. Defaults to "manual" (correct for Docker and all generic deploys —
+# a container cannot safely self-update without mounting the Docker socket).
+# The Pi native install sets this to "systemd-flag", enabling the path-unit
+# mechanism where the app writes a flag file and a root-level oneshot service
+# applies the update outside the unprivileged app process.
+UPDATE_MECHANISM = os.environ.get("UPDATE_MECHANISM", "manual")
+
 # Read from the installed package's own metadata (works for both a
 # regular and an editable install, confirmed) rather than hardcoding a
 # second copy of the version string that could drift from pyproject.toml.

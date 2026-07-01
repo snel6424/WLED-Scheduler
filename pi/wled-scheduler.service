@@ -1,0 +1,23 @@
+[Unit]
+Description=WLED Scheduler
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wled-scheduler
+Group=wled-scheduler
+WorkingDirectory=/opt/wled-scheduler
+Environment=DATABASE_PATH=data/scheduler.db
+Environment=HOST=0.0.0.0
+Environment=PORT=8000
+Environment=LOG_LEVEL=INFO
+Environment=UPDATE_MECHANISM=systemd-flag
+ExecStart=/opt/wled-scheduler/pi/run.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -133,6 +133,69 @@ async function init() {
 
 init().catch((err) => toast(formatError(err), { error: true }));
 
+// Update checker
+(function () {
+  const btn = document.getElementById("check-update-btn");
+  const statusEl = document.getElementById("update-status");
+  const actionEl = document.getElementById("update-action");
+  if (!btn) return;
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    statusEl.textContent = "Checking…";
+    actionEl.hidden = true;
+    actionEl.innerHTML = "";
+
+    let result;
+    try {
+      result = await apiGet("/api/update/check");
+    } catch {
+      statusEl.textContent = "Couldn't check for updates — are you connected to the internet?";
+      btn.disabled = false;
+      return;
+    }
+
+    if (!result.update_available) {
+      statusEl.textContent = `You're up to date (v${result.current_version}).`;
+      btn.disabled = false;
+      return;
+    }
+
+    // An update is available.
+    statusEl.textContent = `v${result.latest_version} is available (you have v${result.current_version}).`;
+
+    if (!result.can_apply_automatically) {
+      // Docker / generic install — show the manual command.
+      actionEl.innerHTML =
+        `<p class="field__hint" style="margin:0;">To update, run:</p>` +
+        `<pre style="margin:0.5rem 0 0; background:var(--surface-raised); border:1px solid var(--border); border-radius:var(--radius-sm); padding:0.6rem 0.75rem; font-size:0.82rem; overflow-x:auto; white-space:pre-wrap; word-break:break-all;">git pull && docker compose up --build -d</pre>`;
+      actionEl.hidden = false;
+    } else {
+      // Pi native install — offer the one-click button.
+      const updateBtn = document.createElement("button");
+      updateBtn.type = "button";
+      updateBtn.className = "btn btn--primary";
+      updateBtn.textContent = "Update now";
+      updateBtn.addEventListener("click", async () => {
+        if (!confirm("Update WLED Scheduler now?\n\nThe app will be briefly unavailable while it updates. Check back in about a minute.")) return;
+        updateBtn.disabled = true;
+        try {
+          await apiPost("/api/update/apply");
+          actionEl.innerHTML =
+            `<p class="field__hint" style="margin:0; color:var(--success);">Update started. The app will be briefly unavailable — check back in about a minute.</p>`;
+        } catch (err) {
+          toast(formatError(err), { error: true });
+          updateBtn.disabled = false;
+        }
+      });
+      actionEl.appendChild(updateBtn);
+      actionEl.hidden = false;
+    }
+
+    btn.disabled = false;
+  });
+})();
+
 // Theme toggle — persisted in localStorage, not the Settings table (per-browser preference)
 const themeToggle = document.getElementById("theme-toggle");
 themeToggle.checked = localStorage.getItem("theme") !== "light";

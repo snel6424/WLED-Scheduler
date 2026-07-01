@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import config, device_health, scheduler
 from app.database import SessionLocal, ensure_default_settings
-from app.routers import actions, devices, history, pages, schedules, settings
+from app.routers import actions, devices, history, pages, schedules, settings, update
 
 logging.basicConfig(
     level=config.LOG_LEVEL,
@@ -54,6 +54,7 @@ app.include_router(actions.router)
 app.include_router(settings.router)
 app.include_router(schedules.router)
 app.include_router(history.router)
+app.include_router(update.router)
 
 
 @app.get("/api/health")

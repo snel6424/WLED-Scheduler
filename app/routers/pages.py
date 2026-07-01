@@ -7,6 +7,7 @@ thin slices of the same data shaped for incremental DOM updates.
 """
 
 import json
+import socket
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -224,10 +225,46 @@ def history_overview_page(
     )
 
 
+def _get_network_info() -> dict:
+    hostname = socket.gethostname()
+    try:
+        # UDP connect trick: determines the outbound interface IP without
+        # actually sending any packets. More reliable than gethostbyname()
+        # which often returns 127.0.0.1 on systems with a loopback hostname.
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        s.connect(("10.254.254.254", 1))
+        ip: str | None = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = None
+    return {"hostname": hostname, "local_hostname": f"{hostname}.local", "ip": ip}
+
+
+def _get_last_backup() -> str | None:
+    backup_dir = Path(config.DATABASE_PATH).parent / "backups"
+    if not backup_dir.exists():
+        return None
+    backups = sorted(backup_dir.glob("scheduler_*.db"), key=lambda p: p.name, reverse=True)
+    if not backups:
+        return None
+    stem = backups[0].stem  # scheduler_YYYYMMDD_HHMMSS
+    ts = stem[len("scheduler_"):]  # YYYYMMDD_HHMMSS
+    try:
+        return f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[9:11]}:{ts[11:13]}:{ts[13:15]}"
+    except Exception:
+        return backups[0].name
+
+
 @router.get("/settings")
 def settings_page(request: Request):
     return templates.TemplateResponse(
-        request, "settings.html", {"active_page": "settings", "app_version": config.APP_VERSION}
+        request, "settings.html", {
+            "active_page": "settings",
+            "app_version": config.APP_VERSION,
+            "network": _get_network_info(),
+            "last_backup": _get_last_backup(),
+        }
     )
 
 
