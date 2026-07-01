@@ -22,6 +22,8 @@ lights, nothing is sent anywhere else.
 
 ## Installation
 
+### Docker (recommended for most setups)
+
 Requires [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
@@ -31,6 +33,12 @@ docker compose up --build -d
 ```
 
 Then open `http://<your device's IP address>:8000`.
+
+### Raspberry Pi (no Docker)
+
+If you're running on a **Raspberry Pi Zero 2 W** and want to skip Docker, a native install path is available. One SSH session, one command.
+
+See [INSTALL_PI.md](INSTALL_PI.md) for the full guide.
 
 ---
 
