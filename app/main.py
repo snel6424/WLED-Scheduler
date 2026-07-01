@@ -1,7 +1,9 @@
 """FastAPI app entrypoint.
 
 Wires up the JSON API routers, the page routes, the startup bootstrap,
-and the two background loops (the scheduler and device health check).
+and the background loops: the scheduler and the persistent mDNS
+device-tracking listener (app.mdns), which replaced the old HTTP
+polling health check entirely.
 """
 
 import asyncio
@@ -11,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app import config, device_health, scheduler
+from app import config, mdns, scheduler
 from app.database import SessionLocal, ensure_default_settings
 from app.routers import actions, devices, history, pages, schedules, settings, update
 
@@ -33,15 +35,14 @@ async def lifespan(app: FastAPI):
         ensure_default_settings(db)
 
     task = asyncio.create_task(scheduler.run_forever())
-    health_task = asyncio.create_task(device_health.run_forever())
+    mdns_monitor = await mdns.start()
     yield
     task.cancel()
-    health_task.cancel()
-    for t in (task, health_task):
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
+    await mdns.stop(mdns_monitor)
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="WLED Scheduler", version=config.APP_VERSION, lifespan=lifespan)

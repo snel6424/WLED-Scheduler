@@ -11,7 +11,7 @@ palette; no sx/ix, no playlists) gets enforced at the API boundary
 instead of just living in a planning doc.
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
 
@@ -24,6 +24,7 @@ from app.models import ActionType, ExecutionStatus, TriggerType
 
 class PresetPayload(BaseModel):
     ps: int = Field(..., ge=0, description="WLED preset id")
+    n: str | None = Field(None, description="Preset name at the time the action was saved")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -107,6 +108,10 @@ class DeviceCreate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     host: str = Field(..., min_length=1, max_length=255)
     room: str | None = Field(None, max_length=100)
+    # Set when a device is added from the mDNS scan results rather than
+    # typed in by hand; lets app.mdns start tracking it immediately
+    # instead of waiting to backfill this by matching on IP later.
+    mdns_name: str | None = Field(None, max_length=255)
 
 
 class DeviceUpdate(BaseModel):
@@ -121,6 +126,7 @@ class DeviceRead(BaseModel):
     host: str
     room: str | None
     mac: str | None
+    mdns_name: str | None
     last_seen_at: datetime | None
     capabilities: dict | None
     powered_on: bool | None
@@ -133,18 +139,14 @@ class DeviceRead(BaseModel):
     @computed_field
     @property
     def online(self) -> bool:
-        """Derived, not stored: a device counts as online if the
-        background health-check loop has heard from it within the
-        last few check intervals. Same staleness-multiplier reasoning
-        as the scheduler's catch-up logic, just applied to reachability
-        instead of schedule firing."""
-        if self.last_seen_at is None:
-            return False
-        from app import config
-        from app.models import utcnow
+        """Derived, not stored on this model: reflects whatever
+        app.mdns's persistent listener currently believes about this
+        device, updated by mDNS callback (an Added/Updated event, a
+        goodbye packet, or a debounced sweep miss) rather than computed
+        fresh here from a timestamp."""
+        from app import mdns
 
-        threshold = timedelta(seconds=config.DEVICE_HEALTH_CHECK_INTERVAL_SECONDS * 3)
-        return (utcnow() - self.last_seen_at) < threshold
+        return mdns.is_online(self.id)
 
 
 class DeviceSummary(BaseModel):

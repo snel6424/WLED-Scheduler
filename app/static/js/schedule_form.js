@@ -245,10 +245,12 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     let actionPayload;
 
     if (actionMode === "preset") {
+      const presetSelect = document.getElementById("preset-select");
+      const presetName = presetSelect.options[presetSelect.selectedIndex]?.text || null;
       actionPayload = {
         name: schedulePayload.name,
         type: "preset",
-        payload: { ps: Number(document.getElementById("preset-select").value) },
+        payload: { ps: Number(presetSelect.value), n: presetName },
         transition_ms: transitionMs,
       };
     } else {
@@ -281,37 +283,49 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
   const btn = document.getElementById("run-now-btn");
   btn.disabled = true;
   try {
-    const deviceId = document.getElementById("device-select").value;
-    if (!deviceId) {
-      toast("Select a device first", { error: true });
-      return;
-    }
-
-    const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
-    let payload;
-
-    if (actionMode === "preset") {
-      const presetId = document.getElementById("preset-select").value;
-      const presetNum = Number(presetId);
-      if (!presetId || isNaN(presetNum) || presetNum < 1) {
-        toast("Select a preset first", { error: true });
+    if (SCHEDULE_ID) {
+      // Existing schedule: route through the schedule's run-now endpoint so
+      // the execution is recorded in history, exactly as the scheduler does.
+      const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`, {});
+      if (result.status === "success") {
+        toast("Ran successfully");
+      } else {
+        toast(result.error_message || "Run failed", { error: true });
+      }
+    } else {
+      // New schedule (not yet saved): preview using current form state.
+      const deviceId = document.getElementById("device-select").value;
+      if (!deviceId) {
+        toast("Select a device first", { error: true });
         return;
       }
-      payload = { ps: presetNum };
-    } else {
-      const on = document.querySelector('input[name="on_off"]:checked').value === "on";
-      payload = { on };
-      if (on) {
-        payload.bri = percentToBri(Number(document.getElementById("brightness").value));
-        payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)], fx: 0 }];
-      }
-    }
 
-    const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
-    if (result.status === "success") {
-      toast("Ran successfully");
-    } else {
-      toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
+      const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
+      let payload;
+
+      if (actionMode === "preset") {
+        const presetId = document.getElementById("preset-select").value;
+        const presetNum = Number(presetId);
+        if (!presetId || isNaN(presetNum) || presetNum < 1) {
+          toast("Select a preset first", { error: true });
+          return;
+        }
+        payload = { ps: presetNum };
+      } else {
+        const on = document.querySelector('input[name="on_off"]:checked').value === "on";
+        payload = { on };
+        if (on) {
+          payload.bri = percentToBri(Number(document.getElementById("brightness").value));
+          payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)], fx: 0 }];
+        }
+      }
+
+      const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
+      if (result.status === "success") {
+        toast("Ran successfully");
+      } else {
+        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
+      }
     }
   } catch (err) {
     toast(formatError(err), { error: true });

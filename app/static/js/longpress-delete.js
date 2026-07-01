@@ -5,6 +5,11 @@
  *   opts.deleteItem(id)   async, calls the delete API
  *   opts.afterDelete()    optional, called after the row is removed
  *   opts.getLabel(row)    optional, returns the dialog item name
+ *
+ * This file lives in <head> and executes exactly once. Event delegation is
+ * used for the confirm dialog so listeners survive htmx body swaps. A
+ * registry re-attaches list bindings after every htmx:afterSettle so
+ * boost-navigating away and back works without a hard refresh.
  */
 (function () {
   'use strict';
@@ -20,30 +25,23 @@
   var swallowNext = false;
   var pendingOk = null;
 
-  // ── confirmation dialog ──────────────────────────────────────────────────
+  // ── confirmation dialog — event delegation so listeners survive body swaps ──
 
-  document.addEventListener('DOMContentLoaded', function () {
-    var bd = document.getElementById('delete-confirm-backdrop');
-    if (!bd) return;
-
-    document.getElementById('delete-confirm-ok').addEventListener('click', function () {
+  document.addEventListener('click', function (e) {
+    if (e.target.id === 'delete-confirm-ok') {
       if (document.getElementById('delete-confirm-no-ask').checked) {
         localStorage.setItem(SKIP_KEY, '1');
       }
-      bd.hidden = true;
-      var cb = pendingOk;
-      pendingOk = null;
+      document.getElementById('delete-confirm-backdrop').hidden = true;
+      var cb = pendingOk; pendingOk = null;
       if (cb) cb();
-    });
-
-    document.getElementById('delete-confirm-cancel').addEventListener('click', function () {
-      bd.hidden = true;
+    } else if (e.target.id === 'delete-confirm-cancel') {
+      document.getElementById('delete-confirm-backdrop').hidden = true;
       pendingOk = null;
-    });
-
-    bd.addEventListener('click', function (e) {
-      if (e.target === bd) { bd.hidden = true; pendingOk = null; }
-    });
+    } else if (e.target.id === 'delete-confirm-backdrop') {
+      document.getElementById('delete-confirm-backdrop').hidden = true;
+      pendingOk = null;
+    }
   });
 
   function showConfirm(name, onOk) {
@@ -86,9 +84,14 @@
     if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
   }
 
-  // ── public attach ────────────────────────────────────────────────────────
+  // ── attach internals ─────────────────────────────────────────────────────
 
-  function attach(listEl, opts) {
+  var _registry = [];
+
+  function _doAttach(listEl, opts) {
+    if (listEl._lpdAttached) return;
+    listEl._lpdAttached = true;
+
     // Prevent the browser's native context-menu / link-preview on long press.
     listEl.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
@@ -151,6 +154,25 @@
         exit();
       }
     }, true);
+  }
+
+  // Re-attach after htmx boost navigations. This file lives in <head> and runs
+  // once; the registry and this listener survive any number of body swaps.
+  document.addEventListener('htmx:afterSettle', function () {
+    _registry.forEach(function (entry) {
+      var el = entry.id ? document.getElementById(entry.id) : null;
+      if (el && !el._lpdAttached) {
+        _doAttach(el, entry.opts);
+      }
+    });
+  });
+
+  // ── public attach ────────────────────────────────────────────────────────
+
+  function attach(listEl, opts) {
+    if (!listEl) return;
+    _registry.push({ id: listEl.id, opts: opts });
+    _doAttach(listEl, opts);
   }
 
   window.LongPressDelete = { attach: attach, exit: exit };

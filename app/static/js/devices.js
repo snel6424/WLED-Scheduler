@@ -22,13 +22,22 @@ LongPressDelete.attach(document.getElementById("device-list"), {
   },
 });
 
+// A hand-edited host no longer necessarily belongs to whatever scan
+// result last filled the mdns_name hidden field, so clear it rather
+// than submit a mismatched pair.
+document.getElementById("device-host").addEventListener("input", () => {
+  document.getElementById("device-mdns-name").value = "";
+});
+
 document.getElementById("add-device-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("device-name").value.trim();
   const host = document.getElementById("device-host").value.trim();
   const room = document.getElementById("device-room").value.trim() || null;
+  const mdnsName = document.getElementById("device-mdns-name").value.trim();
   const payload = { host, room };
   if (name) payload.name = name;
+  if (mdnsName) payload.mdns_name = mdnsName;
 
   const submitBtn = event.target.querySelector('[type="submit"]');
   submitBtn.disabled = true;

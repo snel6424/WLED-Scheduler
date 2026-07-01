@@ -34,6 +34,17 @@ docker compose up --build -d
 
 Then open `http://<your device's IP address>:8000`.
 
+> **Networking note:** device discovery and online/offline status use
+> mDNS, which needs UDP multicast (224.0.0.251:5353). The provided
+> `docker-compose.yml` runs the container with `network_mode: host` to
+> allow that — Docker's default bridge network blocks multicast, so
+> devices would otherwise always show as offline. `network_mode: host`
+> is Linux-only; it's not supported the same way on Docker Desktop for
+> Mac or Windows. If you're on one of those and can't use host
+> networking, the [Raspberry Pi / native install](#raspberry-pi-no-docker)
+> path avoids the issue entirely since there's no container network to
+> work around.
+
 ### Raspberry Pi (no Docker)
 
 If you're running on a **Raspberry Pi Zero 2 W** and want to skip Docker, a native install path is available. One SSH session, one command.

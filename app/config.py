@@ -13,9 +13,19 @@ from importlib.metadata import version as _pkg_version
 
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/scheduler.db")
 SCHEDULER_POLL_INTERVAL_SECONDS = int(os.environ.get("SCHEDULER_POLL_INTERVAL_SECONDS", "30"))
-DEVICE_HEALTH_CHECK_INTERVAL_SECONDS = int(
-    os.environ.get("DEVICE_HEALTH_CHECK_INTERVAL_SECONDS", "60")
-)
+
+# mDNS device tracking (app.mdns), replacing the old HTTP polling health
+# check entirely. WLED's own A/SRV records carry a 120s TTL; the sweep
+# interval only needs to be comfortably under that so 2 missed cycles
+# lands in the 2-4 minute range documented in app/mdns.py, not tied to
+# the TTL value itself (which isn't configurable, it's WLED's).
+MDNS_SWEEP_INTERVAL_SECONDS = int(os.environ.get("MDNS_SWEEP_INTERVAL_SECONDS", "60"))
+MDNS_OFFLINE_MISS_THRESHOLD = int(os.environ.get("MDNS_OFFLINE_MISS_THRESHOLD", "2"))
+# Set to "false" to disable the persistent mDNS listener outright (used
+# by the test suite, which otherwise pays for real multicast socket
+# setup/teardown on every test that spins up the full app).
+MDNS_ENABLED = os.environ.get("MDNS_ENABLED", "true").lower() not in ("false", "0", "")
+
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")

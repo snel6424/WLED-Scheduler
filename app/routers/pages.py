@@ -21,6 +21,7 @@ from app import config
 from app.database import get_db
 from app.models import Device, Schedule, ScheduleExecution, Settings
 from app.schemas import DeviceRead, ScheduleRead
+from app.view_helpers import get_device_reads, get_history_execution_rows, get_schedule_reads
 
 router = APIRouter(tags=["pages"])
 templates = Jinja2Templates(directory="app/templates")
@@ -93,7 +94,8 @@ _PAGE_SIZE = 20
 
 def _history_action_label(action) -> str:
     if action.type.value == "preset":
-        return f"Preset #{action.payload.get('ps', '?')}"
+        n = action.payload.get("n")
+        return n if n else f"Preset #{action.payload.get('ps', '?')}"
     if action.payload.get("on") is False:
         return "Turn Off"
     return "Turn On"
@@ -125,7 +127,8 @@ def _prepare_history(
 
         action = e.schedule.action
         if action.type.value == "preset":
-            action_str = f"Preset #{action.payload.get('ps', '?')}"
+            n = action.payload.get("n")
+            action_str = n if n else f"Preset #{action.payload.get('ps', '?')}"
         elif action.payload.get("on") is False:
             action_str = "Turn Off"
         else:
@@ -155,33 +158,14 @@ def _prepare_history(
 
 
 def _device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
-    """Fetch all devices and compute the derived `online` field via the
-    schema. Sorting by status puts online devices first (then by name);
-    everything else sorts by name only."""
-    rows = list(db.execute(select(Device)).scalars())
-    reads = [DeviceRead.model_validate(d) for d in rows]
-    if sort == "status":
-        reads.sort(key=lambda d: (not d.online, d.name.lower()))
-    else:
-        reads.sort(key=lambda d: d.name.lower())
-    return reads
+    """Backward-compatible wrapper around the shared view helper."""
+    return get_device_reads(db, sort)
 
 
 def _schedule_reads(
     db: Session, status_filter: str = "all", device_id: str | None = None
 ) -> list[ScheduleRead]:
-    stmt = select(Schedule).order_by(func.lower(Schedule.name))
-    if device_id:
-        stmt = stmt.where(Schedule.device_id == device_id)
-    rows = list(db.execute(stmt).scalars())
-    reads = [ScheduleRead.model_validate(s) for s in rows]
-    if status_filter == "active":
-        reads = [s for s in reads if s.enabled]
-    elif status_filter == "inactive":
-        reads = [s for s in reads if not s.enabled]
-    elif status_filter == "sun":
-        reads = [s for s in reads if s.trigger_type.value in ("sunrise", "sunset")]
-    return reads
+    return get_schedule_reads(db, status_filter, device_id)
 
 
 # ---------------------------------------------------------------------------
@@ -365,14 +349,14 @@ def history_entries_fragment(
     now_utc = datetime.now(timezone.utc)
     today = now_utc.astimezone(tz).date()
 
-    stmt = select(ScheduleExecution).order_by(ScheduleExecution.fired_at.desc())
-    if device_id:
-        stmt = stmt.where(ScheduleExecution.device_id == device_id)
-    if since != "all":
-        cutoff = now_utc - timedelta(days=int(since))
-        stmt = stmt.where(ScheduleExecution.fired_at >= cutoff.replace(tzinfo=None))
-    stmt = stmt.offset(offset).limit(_PAGE_SIZE + 1)
-    rows = list(db.execute(stmt).scalars())
+    rows = get_history_execution_rows(
+        db,
+        device_id=device_id,
+        since=since,
+        offset=offset,
+        limit=_PAGE_SIZE,
+        now_utc=now_utc,
+    )
     has_more = len(rows) > _PAGE_SIZE
     rows = rows[:_PAGE_SIZE]
 

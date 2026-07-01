@@ -1,5 +1,5 @@
-{# Schedule rows — swapped into #schedule-list (innerHTML) by the filter pills.
-   Row markup must stay in sync with schedules.html. #}
+{# Schedule rows — swapped into #schedule-list (innerHTML) by the filter pills. #}
+{% from "macros/schedule_row.html" import schedule_row %}
 
 {% if not schedules %}
 <div class="empty">
@@ -8,48 +8,6 @@
 </div>
 {% else %}
 {% for schedule in schedules %}
-{% set hour = schedule.time_of_day.hour if schedule.time_of_day else 12 %}
-{% set is_evening = hour < 5 or hour >= 18 %}
-{% set use_sun_icon = schedule.trigger_type.value == 'sunrise' or (schedule.trigger_type.value == 'time' and not is_evening) %}
-<a class="row" data-id="{{ schedule.id }}" href="/schedules/{{ schedule.id }}/edit" style="display:block; text-decoration:none; color:inherit; cursor:pointer;">
-  <button type="button" class="delete-mode-btn" aria-label="Delete" tabindex="-1"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
-  <div class="schedule-row">
-    <div class="icon-avatar {{ 'icon-avatar--sun' if use_sun_icon else 'icon-avatar--moon' }}">
-      {% if schedule.icon and schedule.icon in picker_icon_svgs %}
-      {{ picker_icon_svgs[schedule.icon] | safe }}
-      {% elif use_sun_icon %}
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="4"/><path d="M12 4v2M5 7l1.5 1.5M19 7l-1.5 1.5M3 14h2M19 14h2"/></svg>
-      {% else %}
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/><path d="M18 3v2M19 4h2"/></svg>
-      {% endif %}
-    </div>
-    <div class="schedule-row__body">
-      <div class="schedule-row__top">
-        <div>
-          <div class="row__title">{{ schedule.name }}</div>
-          {% if schedule.description %}
-          <div class="row__description">{{ schedule.description }}</div>
-          {% endif %}
-          <div class="schedule-row__when">
-            <span class="row__meta">{{ format_days_of_week(schedule.days_of_week) }}</span>
-            {% if schedule.trigger_type.value == 'time' %}
-            <span class="schedule-row__time schedule-row__time--time"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>{{ format_time_of_day(schedule.time_of_day) }}</span>
-            {% else %}
-            <span class="schedule-row__time schedule-row__time--sun"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M3 17h18M5 9l1.2 1.2M19 9l-1.2 1.2"/></svg>{{ format_sun_offset(schedule.trigger_type.value, schedule.offset_minutes) }}</span>
-            {% endif %}
-          </div>
-        </div>
-        <label class="switch" aria-label="Enabled">
-          <input type="checkbox" data-action="toggle" {% if schedule.enabled %}checked{% endif %}>
-          <span class="switch__track"></span>
-        </label>
-      </div>
-      <div class="schedule-row__footer">
-        <span class="tag">{% if schedule.device.icon and schedule.device.icon in picker_icon_svgs %}{{ picker_icon_svgs[schedule.device.icon] | safe }}{% else %}{{ picker_icon_svgs['lightbulb'] | safe }}{% endif %}{{ schedule.device.name }}</span>
-        <span class="schedule-row__chevron" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
-      </div>
-    </div>
-  </div>
-</a>
+{{ schedule_row(schedule, picker_icon_svgs, format_days_of_week, format_time_of_day, format_sun_offset) }}
 {% endfor %}
 {% endif %}

@@ -95,18 +95,4 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-/** Measures the real rendered tab bar height and exposes it as a CSS
- * variable, rather than guessing a static pixel value in CSS (which
- * was 16px too short on at least one real page, leaving Run now and
- * Delete partly hidden behind the tab bar). Re-measures on resize,
- * since font size, zoom, or orientation changes can all change it. */
-function setTabbarHeightVariable() {
-  const tabbar = document.querySelector(".tabbar");
-  if (!tabbar) return;
-  const height = tabbar.getBoundingClientRect().height;
-  if (height > 0) {
-    document.documentElement.style.setProperty("--tabbar-height", `${height}px`);
-  }
-}
-document.addEventListener("DOMContentLoaded", setTabbarHeightVariable);
-window.addEventListener("resize", setTabbarHeightVariable);
+/* Shared page sizing behavior now lives in page-init.js. */

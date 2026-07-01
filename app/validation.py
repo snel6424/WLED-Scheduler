@@ -60,7 +60,9 @@ def merge_and_validate_schedule(
         "days_of_week": existing.days_of_week,
         "start_date": existing.start_date,
         "end_date": existing.end_date,
-        "repeat_annually": existing.repeat_annually,
+        # repeat_annually defaults to False at the schema level but may be
+        # NULL in the database for rows that predate the column being added.
+        "repeat_annually": existing.repeat_annually if existing.repeat_annually is not None else False,
         "enabled": existing.enabled,
     }
     merged.update(update.model_dump(exclude_unset=True))

@@ -27,10 +27,16 @@ sys.path.insert(0, str(REPO_ROOT))  # fallback; `pip install -e .` is the real f
 TEST_DB_PATH = "/tmp/wled_scheduler_test.db"
 os.environ["DATABASE_PATH"] = TEST_DB_PATH
 os.environ.setdefault("SCHEDULER_POLL_INTERVAL_SECONDS", "30")
+# The `client` fixture below runs the app's real lifespan, which would
+# otherwise open/close a real multicast socket (app.mdns.start/stop) on
+# every single test that uses it. Real mDNS behavior is covered by
+# tests/test_mdns.py instead, against the pure logic directly.
+os.environ.setdefault("MDNS_ENABLED", "false")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import mdns  # noqa: E402
 from app.database import SessionLocal, engine, ensure_default_settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
@@ -49,9 +55,14 @@ def clean_schema():
     """Fresh tables before a test, regardless of what the previous
     test left behind. A fixture, not autouse, so it can be an explicit
     dependency of `db` and `client` below and the ordering is
-    guaranteed rather than left to autouse-fixture luck."""
+    guaranteed rather than left to autouse-fixture luck.
+
+    Also resets app.mdns's in-memory online/offline tracking, which
+    lives outside the database (see app/mdns.py) and would otherwise
+    carry state from one test's devices into the next."""
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    mdns._reset_state()
 
 
 @pytest.fixture

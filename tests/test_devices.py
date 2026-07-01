@@ -102,3 +102,27 @@ def test_device_stale_last_seen_reads_offline(client, device, db):
     row.last_seen_at = utcnow() - datetime.timedelta(hours=5)
     db.commit()
     assert client.get(f"/api/devices/{device['id']}").json()["online"] is False
+
+
+def test_device_online_reflects_mdns_state_not_last_seen_at(client, device):
+    """last_seen_at is now just a display timestamp -- see app/mdns.py --
+    only app.mdns's own event-driven state decides online/offline."""
+    from app import mdns
+    from app.database import SessionLocal
+    from app.models import Device
+
+    assert client.get(f"/api/devices/{device['id']}").json()["online"] is False
+
+    with SessionLocal() as db:
+        row = db.get(Device, device["id"])
+        mdns.mark_online(db, row)
+        db.commit()
+
+    assert client.get(f"/api/devices/{device['id']}").json()["online"] is True
+
+
+def test_scan_endpoint_503s_when_mdns_disabled(client):
+    # MDNS_ENABLED=false in the test environment (conftest.py), so the
+    # scan endpoint never opens a real multicast socket during tests.
+    response = client.get("/api/devices/scan")
+    assert response.status_code == 503

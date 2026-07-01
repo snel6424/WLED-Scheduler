@@ -1,8 +1,16 @@
 services:
   wled-scheduler:
     build: .
-    ports:
-      - "8000:8000"
+    # Device online/offline status is now entirely mDNS-based (see
+    # app/mdns.py), which needs UDP multicast to 224.0.0.251:5353.
+    # That does not pass through Docker's default bridge network, so
+    # host networking is a hard requirement now, not an optional
+    # nicety -- without it, every device will read offline permanently.
+    # `ports:` is dropped deliberately: it's ignored (and misleading to
+    # leave in) under network_mode: host, since the container already
+    # shares the host's network namespace directly. The app is reachable
+    # at the host machine's own IP on port 8000 (or $PORT if overridden).
+    network_mode: host
     volumes:
       - ./data:/app/data
     environment:

@@ -11,9 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import wled_client
+from app import config, mdns, wled_client
 from app.database import get_db
-from app.models import Device, utcnow
+from app.mdns import strip_port
+from app.models import Device
 from app.schemas import DeviceCreate, DeviceRead, DeviceUpdate, PresetRead
 from app.wled_client import WledClientError
 
@@ -76,6 +77,7 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db)) -> Devic
         host=payload.host,
         room=payload.room,
         mac=info.get("mac"),
+        mdns_name=payload.mdns_name,
         capabilities=_capabilities_from_info(info),
     )
     db.add(device)
@@ -93,6 +95,28 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db)) -> Devic
 @router.get("", response_model=list[DeviceRead])
 def list_devices(db: Session = Depends(get_db)) -> list[Device]:
     return list(db.execute(select(Device).order_by(Device.name)).scalars())
+
+
+@router.get("/scan")
+async def scan_devices(timeout: float = 5.0, db: Session = Depends(get_db)) -> list[dict]:
+    """Bounded mDNS browse for the add-device flow. Returns devices
+    advertising `_wled._tcp.local.` that aren't already in the device
+    list (matched by mdns_name or by IP), so the UI only ever shows
+    devices worth adding."""
+    if not config.MDNS_ENABLED:
+        raise HTTPException(status_code=503, detail="mDNS is disabled (MDNS_ENABLED=false)")
+
+    timeout = max(0.5, min(timeout, 15.0))
+    existing = list(db.execute(select(Device)).scalars())
+    existing_mdns_names = {d.mdns_name for d in existing if d.mdns_name}
+    existing_ips = {strip_port(d.host) for d in existing}
+
+    results = await mdns.scan(timeout=timeout)
+    return [
+        r
+        for r in results
+        if r["mdns_name"] not in existing_mdns_names and r["host"] not in existing_ips
+    ]
 
 
 @router.get("/{device_id}", response_model=DeviceRead)
@@ -123,7 +147,12 @@ def refresh_device(device_id: str, db: Session = Depends(get_db)) -> Device:
 
     device.mac = info.get("mac")
     device.capabilities = _capabilities_from_info(info)
-    device.last_seen_at = utcnow()
+    # A successful manual refresh is real, if incidental, proof of
+    # reachability -- worth reflecting in online status immediately
+    # rather than making the user wait for mDNS to notice. This is a
+    # one-off, user-triggered HTTP call, not a reintroduction of the
+    # periodic polling loop app.mdns replaced.
+    mdns.mark_online(db, device)
     db.commit()
     db.refresh(device)
     return device

@@ -92,6 +92,13 @@ class Device(TimestampMixin, Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     powered_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    # Bonjour hostname, without the trailing ".local". Populated either
+    # from the add-device mDNS scan flow or backfilled the first time
+    # app.mdns matches an unlabeled device by IP. Devices without this
+    # set (e.g. added by IP before mDNS ever saw them) can't be tracked
+    # for online/offline until mDNS resolves and backfills it.
+    mdns_name: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+
     # Cached subset of /json/info: led count, max segments, fx count,
     # palette count, firmware version. Refreshed on add and on manual refresh.
     capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
