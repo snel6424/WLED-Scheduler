@@ -20,6 +20,7 @@ from app import wled_client
 from app.database import get_db
 from app.models import (
     Action,
+    ActionType,
     Device,
     ExecutionStatus,
     Schedule,
@@ -181,8 +182,13 @@ def run_now(schedule_id: str, db: Session = Depends(get_db)) -> ScheduleExecutio
         request_payload=action.payload,
     )
 
+    payload = action.payload
+    if action.type == ActionType.STATE and payload.get("on") is not False and payload.get("seg"):
+        segs = payload["seg"]
+        payload = {**payload, "seg": [{**segs[0], "fx": 0}, *segs[1:]]}
+
     try:
-        wled_client.post_state(device.host, action.payload, transition_ms=action.transition_ms)
+        wled_client.post_state(device.host, payload, transition_ms=action.transition_ms)
     except WledClientError as exc:
         execution.error_message = str(exc)
     else:

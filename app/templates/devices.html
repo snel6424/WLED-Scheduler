@@ -61,10 +61,11 @@
   </div>
 </div>
 
-<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 0.75rem;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
   <h3 style="margin:0;">My Devices</h3>
-  <select id="sort-select" style="width:auto; padding: 4px 8px; font-size: 0.8rem;"
+  <select id="sort-select"
           name="sort"
+          style="width:auto;"
           hx-get="/fragments/devices/list"
           hx-trigger="change"
           hx-target="#device-list"

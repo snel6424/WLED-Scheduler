@@ -256,7 +256,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
       const payload = { on };
       if (on) {
         payload.bri = percentToBri(Number(document.getElementById("brightness").value));
-        payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)] }];
+        payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)], fx: 0 }];
       }
       actionPayload = { name: schedulePayload.name, type: "state", payload, transition_ms: transitionMs };
     }
@@ -281,42 +281,37 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
   const btn = document.getElementById("run-now-btn");
   btn.disabled = true;
   try {
-    if (SCHEDULE_ID) {
-      const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`);
-      if (result.status === "success") {
-        toast("Ran successfully");
-      } else {
-        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
-      }
-    } else {
-      const deviceId = document.getElementById("device-select").value;
-      if (!deviceId) {
-        toast("Select a device first", { error: true });
+    const deviceId = document.getElementById("device-select").value;
+    if (!deviceId) {
+      toast("Select a device first", { error: true });
+      return;
+    }
+
+    const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
+    let payload;
+
+    if (actionMode === "preset") {
+      const presetId = document.getElementById("preset-select").value;
+      const presetNum = Number(presetId);
+      if (!presetId || isNaN(presetNum) || presetNum < 1) {
+        toast("Select a preset first", { error: true });
         return;
       }
-      const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
-      let payload;
-      if (actionMode === "preset") {
-        const presetId = document.getElementById("preset-select").value;
-        if (!presetId) {
-          toast("Select a preset first", { error: true });
-          return;
-        }
-        payload = { ps: Number(presetId) };
-      } else {
-        const on = document.querySelector('input[name="on_off"]:checked').value === "on";
-        payload = { on };
-        if (on) {
-          payload.bri = percentToBri(Number(document.getElementById("brightness").value));
-          payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)] }];
-        }
+      payload = { ps: presetNum };
+    } else {
+      const on = document.querySelector('input[name="on_off"]:checked').value === "on";
+      payload = { on };
+      if (on) {
+        payload.bri = percentToBri(Number(document.getElementById("brightness").value));
+        payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)], fx: 0 }];
       }
-      const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
-      if (result.status === "success") {
-        toast("Ran successfully");
-      } else {
-        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
-      }
+    }
+
+    const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
+    if (result.status === "success") {
+      toast("Ran successfully");
+    } else {
+      toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
     }
   } catch (err) {
     toast(formatError(err), { error: true });
