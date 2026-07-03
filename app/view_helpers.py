@@ -7,6 +7,45 @@ from app.models import Device, Schedule, ScheduleExecution
 from app.schemas import DeviceRead, ScheduleRead
 
 
+def load_devices_by_id(db: Session, device_ids: set[str]) -> dict[str, Device]:
+    """Batch-fetch Device rows referenced from one or more executions'
+    device_results. Anything in device_ids that no longer exists (the
+    device was deleted after the execution fired) is simply absent
+    from the returned dict; callers treat a miss as "deleted device"."""
+    if not device_ids:
+        return {}
+    return {d.id: d for d in db.execute(select(Device).where(Device.id.in_(device_ids))).scalars()}
+
+
+def build_device_results(devices_by_id: dict[str, Device], raw_results: list[dict]) -> list[dict]:
+    """Joins an execution's raw device_results (device_id/status/error_message
+    dicts straight out of the JSON column) against a devices_by_id lookup,
+    shaping each entry for DeviceResultRead / the history templates."""
+    return [
+        {
+            "device": devices_by_id.get(r["device_id"]),
+            "status": r["status"],
+            "error_message": r.get("error_message"),
+        }
+        for r in raw_results
+    ]
+
+
+def device_results_contains(device_id: str):
+    """EXISTS subquery: does this row's device_results JSON list contain
+    an entry for device_id? Used to filter history/executions by device
+    now that device_id lives inside a JSON blob rather than its own
+    column. Requires SQLite's JSON1 extension (json_each/json_extract),
+    bundled into Python's stdlib sqlite3 on any reasonably modern build."""
+    je = func.json_each(ScheduleExecution.device_results).table_valued("value")
+    return (
+        select(1)
+        .select_from(je)
+        .where(func.json_extract(je.c.value, "$.device_id") == device_id)
+        .exists()
+    )
+
+
 def get_device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
     """Fetch devices and compute derived online status for page rendering."""
     rows = list(db.execute(select(Device)).scalars())
@@ -24,11 +63,11 @@ def get_schedule_reads(
     """Fetch schedules with their related device/action data loaded eagerly."""
     stmt = (
         select(Schedule)
-        .options(selectinload(Schedule.device), selectinload(Schedule.action))
+        .options(selectinload(Schedule.devices), selectinload(Schedule.action))
         .order_by(func.lower(Schedule.name))
     )
     if device_id:
-        stmt = stmt.where(Schedule.device_id == device_id)
+        stmt = stmt.where(Schedule.devices.any(Device.id == device_id))
 
     rows = list(db.execute(stmt).scalars())
     reads = [ScheduleRead.model_validate(s) for s in rows]
@@ -54,14 +93,11 @@ def get_history_execution_rows(
     now_utc = now_utc or datetime.now(timezone.utc)
     stmt = (
         select(ScheduleExecution)
-        .options(
-            selectinload(ScheduleExecution.schedule).selectinload(Schedule.action),
-            selectinload(ScheduleExecution.device),
-        )
+        .options(selectinload(ScheduleExecution.schedule).selectinload(Schedule.action))
         .order_by(ScheduleExecution.fired_at.desc())
     )
     if device_id:
-        stmt = stmt.where(ScheduleExecution.device_id == device_id)
+        stmt = stmt.where(device_results_contains(device_id))
     if since != "all":
         cutoff = now_utc - timedelta(days=int(since))
         stmt = stmt.where(ScheduleExecution.fired_at >= cutoff.replace(tzinfo=None))

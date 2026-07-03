@@ -21,7 +21,12 @@ from app import config
 from app.database import get_db
 from app.models import Device, Schedule, ScheduleExecution, Settings
 from app.schemas import DeviceRead, ScheduleRead
-from app.view_helpers import get_device_reads, get_history_execution_rows, get_schedule_reads
+from app.view_helpers import (
+    get_device_reads,
+    get_history_execution_rows,
+    get_schedule_reads,
+    load_devices_by_id,
+)
 
 router = APIRouter(tags=["pages"])
 templates = Jinja2Templates(directory="app/templates")
@@ -77,17 +82,22 @@ _HISTORY_FALLBACK_SVG = {
     "success": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" /></svg>',
     "failed":  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /></svg>',
     "skipped": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" /> <line x1="19" x2="19" y1="5" y2="19" /></svg>',
+    "partial": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /> <path d="M12 8v4" /> <path d="M12 16h.01" /></svg>',
 }
 _HISTORY_STATUS_CLASS = {
     "success": "icon-avatar--sun",
     "failed":  "icon-avatar--danger",
     "skipped": "icon-avatar--moon",
+    "partial": "icon-avatar--warning",
 }
-_HISTORY_STATUS_LABEL = {"success": "Successful", "failed": "Failed", "skipped": "Skipped"}
+_HISTORY_STATUS_LABEL = {
+    "success": "Successful", "failed": "Failed", "skipped": "Skipped", "partial": "Partial",
+}
 _HISTORY_STATUS_COLOR = {
     "success": "var(--success)",
     "failed":  "var(--danger)",
     "skipped": "var(--text-muted)",
+    "partial": "var(--amber)",
 }
 _PAGE_SIZE = 20
 
@@ -111,13 +121,19 @@ def _history_group_label(d, today) -> str:
 
 
 def _prepare_history(
+    db: Session,
     executions: list,
     tz,
     today,
 ) -> list[dict]:
     """Convert raw ScheduleExecution ORM rows into flat dicts ready for the
     history fragment template — all formatting resolved here so the template
-    stays dumb."""
+    stays dumb. One dict per execution (not per device); each carries a
+    device_results list for the per-device breakdown within that row."""
+    devices_by_id = load_devices_by_id(
+        db, {r["device_id"] for e in executions for r in e.device_results}
+    )
+
     result = []
     for e in executions:
         dt_utc = e.fired_at.replace(tzinfo=timezone.utc)
@@ -125,33 +141,35 @@ def _prepare_history(
         hour = local_dt.hour
         time_str = f"{hour % 12 or 12}:{local_dt.minute:02d} {'PM' if hour >= 12 else 'AM'}"
 
-        action = e.schedule.action
-        if action.type.value == "preset":
-            n = action.payload.get("n")
-            action_str = n if n else f"Preset #{action.payload.get('ps', '?')}"
-        elif action.payload.get("on") is False:
-            action_str = "Turn Off"
-        else:
-            action_str = "Turn On"
-
-        status = e.status.value
+        action_str = _history_action_label(e.schedule.action)
+        overall = e.overall_status
         sched_icon = PICKER_ICON_SVGS.get(e.schedule.icon) if e.schedule.icon else None
-        device_icon = PICKER_ICON_SVGS.get(e.device.icon) if e.device.icon else None
+
+        device_results = []
+        for r in e.device_results:
+            device = devices_by_id.get(r["device_id"])
+            status = r["status"]
+            device_results.append({
+                "device_name": device.name if device else "Deleted device",
+                "device_icon_svg": (
+                    PICKER_ICON_SVGS.get(device.icon) if device and device.icon else None
+                ),
+                "device_id": device.id if device else None,
+                "status_label": _HISTORY_STATUS_LABEL[status],
+                "status_color": _HISTORY_STATUS_COLOR[status],
+                "error_message": r.get("error_message"),
+            })
 
         result.append({
             "local_date": local_dt.date(),
             "time_str": time_str,
             "schedule_name": e.schedule.name,
             "action_str": action_str,
-            "status": status,
-            "status_label": _HISTORY_STATUS_LABEL[status],
-            "status_color": _HISTORY_STATUS_COLOR[status],
-            "status_class": _HISTORY_STATUS_CLASS[status],
-            "avatar_svg": sched_icon or _HISTORY_FALLBACK_SVG[status],
-            "device_id": e.device.id,
-            "device_name": e.device.name,
-            "device_icon_svg": device_icon,
-            "error_message": e.error_message,
+            "status_label": _HISTORY_STATUS_LABEL[overall],
+            "status_color": _HISTORY_STATUS_COLOR[overall],
+            "status_class": _HISTORY_STATUS_CLASS[overall],
+            "avatar_svg": sched_icon or _HISTORY_FALLBACK_SVG[overall],
+            "device_results": device_results,
         })
     return result
 
@@ -240,14 +258,53 @@ def _get_last_backup() -> str | None:
         return backups[0].name
 
 
+def _resolve_display_tz(db: Session):
+    """The configured timezone if Settings has one, otherwise UTC.
+    Shared by anything rendering a server-side timestamp for display,
+    same fallback behavior as the history fragment always used."""
+    settings = db.get(Settings, 1)
+    try:
+        return ZoneInfo(settings.timezone) if settings and settings.timezone else timezone.utc
+    except Exception:
+        return timezone.utc
+
+
+def _format_uptime(delta: timedelta) -> str:
+    total_seconds = int(delta.total_seconds())
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _get_system_info(db: Session) -> dict:
+    """Pulled together from what the running process already knows
+    about itself: package metadata and the clock. Deliberately nothing
+    here needs host-level access from inside the container (Docker's
+    own version, host uptime, etc aren't available without mounting
+    the Docker socket, a separate, unresolved constraint, not
+    something to quietly work around here)."""
+    now = datetime.now(timezone.utc)
+    tz = _resolve_display_tz(db)
+    return {
+        "version": config.APP_VERSION,
+        "uptime": _format_uptime(now - config.START_TIME),
+        "started_at": config.START_TIME.astimezone(tz).strftime("%B %-d, %Y %-I:%M %p"),
+    }
+
+
 @router.get("/settings")
-def settings_page(request: Request):
+def settings_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "settings.html", {
             "active_page": "settings",
-            "app_version": config.APP_VERSION,
             "network": _get_network_info(),
             "last_backup": _get_last_backup(),
+            "system": _get_system_info(db),
         }
     )
 
@@ -340,12 +397,7 @@ def history_entries_fragment(
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    settings = db.get(Settings, 1)
-    try:
-        tz = ZoneInfo(settings.timezone) if settings and settings.timezone else timezone.utc
-    except Exception:
-        tz = timezone.utc
-
+    tz = _resolve_display_tz(db)
     now_utc = datetime.now(timezone.utc)
     today = now_utc.astimezone(tz).date()
 
@@ -360,7 +412,7 @@ def history_entries_fragment(
     has_more = len(rows) > _PAGE_SIZE
     rows = rows[:_PAGE_SIZE]
 
-    entries = _prepare_history(rows, tz, today)
+    entries = _prepare_history(db, rows, tz, today)
 
     # Group by local date, preserving order.
     groups: dict = {}

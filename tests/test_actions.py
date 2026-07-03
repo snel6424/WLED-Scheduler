@@ -38,7 +38,7 @@ def test_delete_blocked_while_a_schedule_references_it(
     schedule = client.post(
         "/api/schedules",
         json={
-            "name": "Dusk", "device_id": device["id"], "action_id": preset_action["id"],
+            "name": "Dusk", "device_ids": [device["id"]], "action_id": preset_action["id"],
             "trigger_type": "sunset", "offset_minutes": -10,
         },
     )

@@ -9,7 +9,7 @@ import datetime as dt
 import pytest
 from pydantic import ValidationError
 
-from app.models import Action, ActionType, Schedule, TriggerType
+from app.models import Action, ActionType, Device, Schedule, TriggerType
 from app.schemas import ActionUpdate, ScheduleUpdate
 from app.validation import merge_and_validate_action, merge_and_validate_schedule
 
@@ -21,8 +21,11 @@ def _action(**overrides):
 
 
 def _schedule(**overrides):
+    # Not persisted, so `devices` is populated directly with unattached
+    # Device instances rather than via device_ids: merge_and_validate_schedule
+    # only reads existing.devices' ids, it never hits the database.
     base = dict(
-        name="Morning", device_id="d1", action_id="a1", trigger_type=TriggerType.TIME,
+        name="Morning", devices=[Device(id="d1")], action_id="a1", trigger_type=TriggerType.TIME,
         time_of_day=dt.time(7, 0), offset_minutes=None, days_of_week=127, enabled=True,
     )
     base.update(overrides)

@@ -180,15 +180,10 @@
       </div>
     </div>
 
-    <div class="input-row" style="margin-bottom: 1rem;">
-      <div class="input-row__icon">
-        {{ picker_icon_svgs['lightbulb'] | safe }}
-      </div>
-      <div class="input-row__body">
-        <label for="device-select">Device</label>
-        <select id="device-select" required></select>
-        <p class="field__hint" id="device-empty-state" hidden></p>
-      </div>
+    <div class="field" style="margin-bottom: 1rem;">
+      <label>Devices</label>
+      <div class="device-toggles" id="device-toggles"></div>
+      <p class="field__hint" id="device-empty-state" hidden></p>
     </div>
 
     <div class="segmented" style="margin-bottom: 1rem;">
@@ -218,16 +213,65 @@
       </div>
 
       <div id="brightness-color-fields" class="card" x-show="onOff === 'on'">
-        <div style="flex:3;">
+        <div>
           <label for="brightness" style="font-weight: 700; font-size: 0.85rem;">Brightness</label>
           <div style="display:flex;align-items:center;gap:var(--space-2);margin-top:0.25rem;">
             <input type="range" id="brightness" min="1" max="100" value="80" style="flex:1;width:auto;margin:0;">
             <div class="row__meta" id="brightness-value">80%</div>
           </div>
         </div>
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-          <label for="color" style="font-weight: 700; font-size: 0.85rem; margin: 0;">Color</label>
-          <input type="color" id="color" value="#f2a83d" style="margin-top: 0.25rem;">
+
+        {# Custom hue/saturation color picker, replacing the native
+           <input type="color">, which iOS/Android render as a small
+           swatch that opens an OS-level picker rather than something
+           touch-draggable in place. Value (brightness of the color
+           itself) is deliberately not exposed here, it's fixed at
+           100%, since the Brightness slider above already owns overall
+           dimming; only hue and saturation are pickable.
+           #color stays a plain hidden input so the rest of this file
+           (submit handler, run-now preview, load-for-edit) keeps
+           reading/writing it exactly like before. Loading an existing
+           schedule sets it via a `set-color` document event, the same
+           pattern the icon picker macro uses for `set-icon`, since the
+           value arrives asynchronously after this component's already
+           initialized. #}
+        <div class="color-picker"
+             x-data="{
+               hue: 0,
+               sat: 0,
+               hex: '#f2a83d',
+               sync() {
+                 this.hex = rgbToHex(hsToRgb(this.hue, this.sat));
+               },
+               setFromHex(hex) {
+                 if (!hex) return;
+                 this.hex = hex;
+                 [this.hue, this.sat] = rgbToHs(hexToRgb(hex));
+               }
+             }"
+             x-init="setFromHex($refs.colorValue.value)"
+             @set-color.document="setFromHex($event.detail)">
+          <label style="font-weight: 700; font-size: 0.85rem;">Color</label>
+          {# :value keeps the hidden input in sync with `hex` reactively
+             (as icon_picker.html's hidden input does for `icon`), so
+             both slider drags (via sync()) and the async set-color
+             event (via setFromHex(), which doesn't call sync()) are
+             reflected here, not just the former. #}
+          <input type="hidden" id="color" x-ref="colorValue" value="#f2a83d" :value="hex">
+
+          <input type="range" class="color-picker__hue" min="0" max="359" step="1"
+                 aria-label="Hue"
+                 x-model.number="hue" @input="sync()">
+
+          <input type="range" class="color-picker__sat" min="0" max="100" step="1"
+                 aria-label="Saturation"
+                 x-model.number="sat" @input="sync()"
+                 :style="{ background: `linear-gradient(to right, #fff, hsl(${hue}, 100%, 50%))` }">
+
+          <div class="color-picker__row">
+            <span class="color-picker__swatch" :style="{ background: hex }"></span>
+            <span class="color-picker__hex" x-text="hex.toUpperCase()"></span>
+          </div>
         </div>
       </div>
     </div>

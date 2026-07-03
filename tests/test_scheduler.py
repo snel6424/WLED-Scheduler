@@ -42,7 +42,7 @@ def action_row(db):
 
 def _make_schedule(db, device, action, **overrides):
     base = dict(
-        name="Schedule", device_id=device.id, action_id=action.id,
+        name="Schedule", devices=[device], action_id=action.id,
         trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0),
     )
     base.update(overrides)
@@ -64,9 +64,36 @@ def test_normal_due_schedule_fires(db, settings_row, device_row, action_row):
     db.refresh(schedule)
     executions = db.query(ScheduleExecution).filter_by(schedule_id=schedule.id).all()
     assert len(executions) == 1
-    assert executions[0].status == ExecutionStatus.SUCCESS
+    assert executions[0].overall_status == ExecutionStatus.SUCCESS.value
     assert schedule.last_run_at is not None
     assert schedule.next_run_at > utcnow()
+
+
+def test_schedule_targeting_two_devices_fires_on_both(db, settings_row, device_row, action_row):
+    from tests.mock_wled import server as mock_wled
+
+    _, port = mock_wled.start()
+    other_device = Device(name="Lamp", host=f"127.0.0.1:{port}")
+    db.add(other_device)
+    db.flush()
+
+    now = utcnow()
+    schedule = Schedule(
+        name="Schedule", devices=[device_row, other_device], action_id=action_row.id,
+        trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0),
+        next_run_at=now - dt.timedelta(seconds=5),
+    )
+    db.add(schedule)
+    db.commit()
+
+    scheduler.tick()
+
+    db.refresh(schedule)
+    executions = db.query(ScheduleExecution).filter_by(schedule_id=schedule.id).all()
+    assert len(executions) == 1
+    assert executions[0].overall_status == ExecutionStatus.SUCCESS.value
+    fired_device_ids = {r["device_id"] for r in executions[0].device_results}
+    assert fired_device_ids == {device_row.id, other_device.id}
 
 
 def test_stale_schedule_with_catch_up_off_is_skipped_not_fired(
@@ -84,8 +111,9 @@ def test_stale_schedule_with_catch_up_off_is_skipped_not_fired(
     db.refresh(schedule)
     executions = db.query(ScheduleExecution).filter_by(schedule_id=schedule.id).all()
     assert len(executions) == 1
-    assert executions[0].status == ExecutionStatus.SKIPPED
-    assert executions[0].error_message is not None  # carries the human-readable reason
+    assert executions[0].overall_status == ExecutionStatus.SKIPPED.value
+    # carries the human-readable reason, one entry per targeted device
+    assert executions[0].device_results[0]["error_message"] is not None
     assert schedule.last_run_at is None  # never actually ran
     assert schedule.next_run_at > utcnow()  # still advanced
 
@@ -103,7 +131,7 @@ def test_stale_schedule_with_catch_up_on_fires(db, settings_row, device_row, act
     db.refresh(schedule)
     executions = db.query(ScheduleExecution).filter_by(schedule_id=schedule.id).all()
     assert len(executions) == 1
-    assert executions[0].status == ExecutionStatus.SUCCESS
+    assert executions[0].overall_status == ExecutionStatus.SUCCESS.value
 
 
 def test_not_yet_due_schedule_is_untouched(db, settings_row, device_row, action_row):
@@ -160,4 +188,4 @@ def test_real_background_loop_fires_a_due_schedule_on_its_own(
     with SessionLocal() as fresh_db:
         executions = fresh_db.query(ScheduleExecution).filter_by(schedule_id=schedule_id).all()
         assert len(executions) >= 1
-        assert executions[0].status == ExecutionStatus.SUCCESS
+        assert executions[0].overall_status == ExecutionStatus.SUCCESS.value

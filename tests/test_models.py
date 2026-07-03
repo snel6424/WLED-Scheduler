@@ -19,6 +19,7 @@ from app.models import (
     ScheduleExecution,
     Settings,
     TriggerType,
+    compute_overall_status,
     utcnow,
 )
 
@@ -31,6 +32,10 @@ def _device_and_action(db):
     return device, action
 
 
+def _success_result(device):
+    return {"device_id": device.id, "status": ExecutionStatus.SUCCESS.value, "error_message": None}
+
+
 def test_enums_store_lowercase_value_not_member_name(db):
     """Without values_callable on the Enum columns, SQLAlchemy stores
     the member NAME ("SUNSET") rather than its value ("sunset"), which
@@ -38,7 +43,7 @@ def test_enums_store_lowercase_value_not_member_name(db):
     the lowercase string."""
     device, action = _device_and_action(db)
     schedule = Schedule(
-        name="Dusk", device_id=device.id, action_id=action.id,
+        name="Dusk", devices=[device], action_id=action.id,
         trigger_type=TriggerType.SUNSET, offset_minutes=-10,
     )
     db.add(schedule)
@@ -50,16 +55,25 @@ def test_enums_store_lowercase_value_not_member_name(db):
     assert raw[0] == "sunset"
 
 
-def test_device_delete_cascades_to_schedule_and_execution(db):
+def test_device_delete_removes_it_from_schedule_without_deleting_schedule(db):
+    """Many-to-many, not delete-orphan: deleting one of a schedule's
+    several devices should only drop that device's join row, not the
+    schedule (which may still target other devices) or its execution
+    history (device_results isn't FK-linked to Device at all, so it
+    can't cascade-delete even if it wanted to)."""
     device, action = _device_and_action(db)
+    other_device = Device(name="Lamp", host="192.168.1.51")
+    db.add(other_device)
+    db.flush()
     schedule = Schedule(
-        name="Dusk", device_id=device.id, action_id=action.id,
+        name="Dusk", devices=[device, other_device], action_id=action.id,
         trigger_type=TriggerType.SUNSET, offset_minutes=-10,
     )
     db.add(schedule)
     db.flush()
     execution = ScheduleExecution(
-        schedule_id=schedule.id, device_id=device.id, status=ExecutionStatus.SUCCESS
+        schedule_id=schedule.id,
+        device_results=[_success_result(device), _success_result(other_device)],
     )
     db.add(execution)
     db.commit()
@@ -69,21 +83,46 @@ def test_device_delete_cascades_to_schedule_and_execution(db):
     db.commit()
 
     # passive_deletes=True means this session never issues a DELETE for
-    # the Schedule/ScheduleExecution rows itself; it relies entirely on
+    # the schedule_devices join row itself; it relies entirely on
     # SQLite's own ON DELETE CASCADE. That also means this session's
-    # identity map has no idea they're gone and will happily hand back
-    # the stale in-memory objects on db.get() without re-querying.
-    # expire_all() forces a real read; a fresh session would work too.
+    # identity map has no idea it's gone and will happily hand back a
+    # stale in-memory devices list without re-querying. expire_all()
+    # forces a real read; a fresh session would work too.
     db.expire_all()
 
-    assert db.get(Schedule, schedule_id) is None
+    remaining_schedule = db.get(Schedule, schedule_id)
+    assert remaining_schedule is not None
+    assert [d.id for d in remaining_schedule.devices] == [other_device.id]
+    assert db.get(ScheduleExecution, execution_id) is not None
+
+
+def test_schedule_delete_cascades_to_execution(db):
+    device, action = _device_and_action(db)
+    schedule = Schedule(
+        name="Dusk", devices=[device], action_id=action.id,
+        trigger_type=TriggerType.SUNSET, offset_minutes=-10,
+    )
+    db.add(schedule)
+    db.flush()
+    execution = ScheduleExecution(
+        schedule_id=schedule.id,
+        device_results=[_success_result(device)],
+    )
+    db.add(execution)
+    db.commit()
+    execution_id = execution.id
+
+    db.delete(schedule)
+    db.commit()
+    db.expire_all()
+
     assert db.get(ScheduleExecution, execution_id) is None
 
 
 def test_action_delete_blocked_while_schedule_references_it(db):
     device, action = _device_and_action(db)
     schedule = Schedule(
-        name="Dusk", device_id=device.id, action_id=action.id,
+        name="Dusk", devices=[device], action_id=action.id,
         trigger_type=TriggerType.SUNSET, offset_minutes=-10,
     )
     db.add(schedule)
@@ -108,7 +147,7 @@ def test_action_delete_blocked_while_schedule_references_it(db):
 )
 def test_schedule_check_constraints_reject_invalid_combinations(db, kwargs):
     device, action = _device_and_action(db)
-    schedule = Schedule(name="Bad", device_id=device.id, action_id=action.id, **kwargs)
+    schedule = Schedule(name="Bad", devices=[device], action_id=action.id, **kwargs)
     db.add(schedule)
     with pytest.raises(IntegrityError):
         db.commit()
@@ -128,7 +167,7 @@ def test_known_gap_time_trigger_with_offset_minutes_not_rejected_at_db_level(db)
     write path to this table is ever added."""
     device, action = _device_and_action(db)
     schedule = Schedule(
-        name="Both set", device_id=device.id, action_id=action.id,
+        name="Both set", devices=[device], action_id=action.id,
         trigger_type=TriggerType.TIME, time_of_day=dt.time(7, 0), offset_minutes=-10,
     )
     db.add(schedule)
@@ -156,34 +195,43 @@ def test_action_type_check_constraint_rejects_invalid_value(db):
     db.rollback()
 
 
-def test_schedule_execution_status_check_constraint_rejects_invalid_value(db):
-    device, action = _device_and_action(db)
-    db.commit()
-    with pytest.raises(IntegrityError):
-        db.execute(
-            text(
-                "INSERT INTO schedule_executions (id, schedule_id, device_id, fired_at, status) "
-                "VALUES ('bad-1', :sid, :did, :now, 'bogus')"
-            ),
-            {"sid": "nonexistent", "did": device.id, "now": utcnow()},
-        )
-    db.rollback()
-
-
-def test_schedule_execution_accepts_skipped_status(db):
+def test_known_gap_device_results_status_not_validated_at_db_level(db):
+    """Documents a real, accepted gap opened by moving per-device
+    outcomes into a JSON blob: unlike the old dedicated `status` column
+    (which had ck_schedule_execution_status_valid), nothing at the
+    database level constrains the strings inside device_results.
+    Garbage in a device_results entry's "status" is only ever caught by
+    whichever Python code wrote it (scheduler.py, the run-now router),
+    not by SQLite. Accepted for the same reason as the time-trigger gap
+    above: there's exactly one write path today."""
     device, action = _device_and_action(db)
     schedule = Schedule(
-        name="Dusk", device_id=device.id, action_id=action.id,
+        name="Dusk", devices=[device], action_id=action.id,
         trigger_type=TriggerType.SUNSET, offset_minutes=-10,
     )
     db.add(schedule)
     db.flush()
     db.add(
         ScheduleExecution(
-            schedule_id=schedule.id, device_id=device.id, status=ExecutionStatus.SKIPPED
+            schedule_id=schedule.id,
+            device_results=[{"device_id": device.id, "status": "bogus", "error_message": None}],
         )
     )
-    db.commit()  # should not raise
+    db.commit()  # does NOT raise today; that's the point of this test
+
+
+@pytest.mark.parametrize(
+    "device_results,expected",
+    [
+        ([], ExecutionStatus.SKIPPED.value),
+        ([{"status": "skipped"}, {"status": "skipped"}], ExecutionStatus.SKIPPED.value),
+        ([{"status": "success"}, {"status": "success"}], ExecutionStatus.SUCCESS.value),
+        ([{"status": "failed"}, {"status": "failed"}], ExecutionStatus.FAILED.value),
+        ([{"status": "success"}, {"status": "failed"}], "partial"),
+    ],
+)
+def test_compute_overall_status(device_results, expected):
+    assert compute_overall_status(device_results) == expected
 
 
 def test_settings_singleton_constraint_rejects_a_second_row(db):

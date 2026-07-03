@@ -24,7 +24,7 @@ def test_clearing_latitude_blocked_while_sunset_schedule_exists(
     schedule = client.post(
         "/api/schedules",
         json={
-            "name": "Dusk", "device_id": device["id"], "action_id": preset_action["id"],
+            "name": "Dusk", "device_ids": [device["id"]], "action_id": preset_action["id"],
             "trigger_type": "sunset", "offset_minutes": -10,
         },
     )
@@ -56,7 +56,7 @@ def test_setting_fields_one_at_a_time_never_blocked_before_location_was_ever_com
     db.flush()
     db.add(
         Schedule(
-            name="Dusk", device_id=device.id, action_id=action.id,
+            name="Dusk", devices=[device], action_id=action.id,
             trigger_type=TriggerType.SUNSET, offset_minutes=-10,
         )
     )

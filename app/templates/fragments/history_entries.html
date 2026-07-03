@@ -9,7 +9,7 @@
 <h3 style="margin: 1.5rem 0 0.75rem;">{{ group_label(date_key, today) }}</h3>
 <div class="list history-list">
   {% for entry in entries %}
-  <div class="row" style="display:flex; align-items:center;">
+  <div class="row" style="display:flex; align-items:flex-start;">
     <div class="icon-avatar {{ entry.status_class }}" style="margin-right:1rem; flex-shrink:0;">
       {{ entry.avatar_svg | safe }}
     </div>
@@ -18,13 +18,21 @@
         {{ entry.schedule_name }} - {{ entry.action_str }} -
         <span style="color:{{ entry.status_color }};">{{ entry.status_label }}</span>
       </div>
-      <div class="row__meta">
-        <a class="tag" href="/devices/{{ entry.device_id }}" style="text-decoration:none;">
-          {% if entry.device_icon_svg %}
-            {{ entry.device_icon_svg | safe }}
+      <div class="history-devices">
+        {% for d in entry.device_results %}
+        {% if d.device_id %}
+        <a class="history-device" href="/devices/{{ d.device_id }}" style="text-decoration:none;">
+        {% else %}
+        <span class="history-device">
+        {% endif %}
+          <span class="history-device__dot" style="background:{{ d.status_color }};"></span>
+          {% if d.device_icon_svg %}
+            {{ d.device_icon_svg | safe }}
           {% else %}
             {{ picker_icon_svgs['lightbulb'] | safe }}
-          {% endif %}{{ entry.device_name }}</a>{% if entry.error_message %}<span class="muted" style="margin-left:0.5rem;">{{ entry.error_message }}</span>{% endif %}
+          {% endif %}{{ d.device_name }}{% if d.error_message %}: {{ d.error_message }}{% endif %}
+        {% if d.device_id %}</a>{% else %}</span>{% endif %}
+        {% endfor %}
       </div>
     </div>
     <div class="row__meta mono" style="flex-shrink:0; margin-left:0.5rem;">{{ entry.time_str }}</div>

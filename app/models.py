@@ -19,6 +19,7 @@ from datetime import UTC, date, datetime, time
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     Date,
     DateTime,
     Float,
@@ -26,6 +27,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Table,
     Text,
     Time,
 )
@@ -81,6 +83,25 @@ def _enum_values(enum_cls):
     return SAEnum(enum_cls, values_callable=lambda obj: [e.value for e in obj])
 
 
+# Join table for the Schedule<->Device many-to-many relationship. A
+# schedule targets one or more devices directly; there is no Group
+# entity. ON DELETE CASCADE on both sides: deleting a schedule drops
+# its device links, and deleting a device drops it from any schedules
+# that targeted it (which may leave a schedule with zero devices; the
+# scheduler loop skips firing such a schedule rather than deleting it
+# out from under the user).
+schedule_devices = Table(
+    "schedule_devices",
+    Base.metadata,
+    Column(
+        "schedule_id", String(36), ForeignKey("schedules.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "device_id", String(36), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    ),
+)
+
+
 class Device(TimestampMixin, Base):
     __tablename__ = "devices"
 
@@ -107,11 +128,11 @@ class Device(TimestampMixin, Base):
     # use the generic bulb. Stored as a string key, not raw SVG.
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # Many-to-many, not delete-orphan: deleting a device should only
+    # drop it from schedules that reference it, not delete those
+    # schedules outright (they may target other devices too).
     schedules: Mapped[list["Schedule"]] = relationship(
-        back_populates="device", cascade="all, delete-orphan", passive_deletes=True
-    )
-    executions: Mapped[list["ScheduleExecution"]] = relationship(
-        back_populates="device", passive_deletes=True
+        secondary=schedule_devices, back_populates="devices", passive_deletes=True
     )
 
     def __repr__(self) -> str:
@@ -168,9 +189,6 @@ class Schedule(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
 
-    device_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
-    )
     action_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("actions.id", ondelete="RESTRICT"), nullable=False
     )
@@ -202,7 +220,9 @@ class Schedule(TimestampMixin, Base):
     # icon from trigger_type and time_of_day, which is the default behaviour.
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    device: Mapped["Device"] = relationship(back_populates="schedules")
+    devices: Mapped[list["Device"]] = relationship(
+        secondary=schedule_devices, back_populates="schedules"
+    )
     action: Mapped["Action"] = relationship(back_populates="schedules")
     executions: Mapped[list["ScheduleExecution"]] = relationship(
         back_populates="schedule", cascade="all, delete-orphan", passive_deletes=True
@@ -210,7 +230,6 @@ class Schedule(TimestampMixin, Base):
 
     __table_args__ = (
         Index("ix_schedules_next_run_at", "next_run_at"),
-        Index("ix_schedules_device_id", "device_id"),
         Index("ix_schedules_action_id", "action_id"),
         CheckConstraint(
             "(trigger_type != 'time') OR (time_of_day IS NOT NULL)",
@@ -237,41 +256,63 @@ class Schedule(TimestampMixin, Base):
         return f"Schedule(id={self.id!r}, name={self.name!r}, enabled={self.enabled!r})"
 
 
+def compute_overall_status(device_results: list[dict]) -> str:
+    """Derives one summary status for a whole execution from its
+    per-device outcomes. 'skipped' covers both the real skip case (the
+    scheduler deliberately didn't attempt any device, catch_up_missed
+    was off) and the degenerate case of a schedule with zero devices
+    at fire time (a device was deleted out from under it); neither has
+    any success/failed outcomes to summarize. 'partial' only happens
+    when a fired schedule's devices disagree, some reached, some not."""
+    if not device_results:
+        return ExecutionStatus.SKIPPED.value
+    statuses = {r["status"] for r in device_results}
+    if statuses == {ExecutionStatus.SKIPPED.value}:
+        return ExecutionStatus.SKIPPED.value
+    if statuses <= {ExecutionStatus.SUCCESS.value}:
+        return ExecutionStatus.SUCCESS.value
+    if statuses <= {ExecutionStatus.FAILED.value}:
+        return ExecutionStatus.FAILED.value
+    return "partial"
+
+
 class ScheduleExecution(Base):
+    """One row per schedule *firing*, covering every device the
+    schedule targeted at that moment, not one row per device. See
+    device_results."""
+
     __tablename__ = "schedule_executions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     schedule_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False
     )
-    device_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
-    )
     fired_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
-    status: Mapped[ExecutionStatus] = mapped_column(_enum_values(ExecutionStatus), nullable=False)
-    # SUCCESS / FAILED: a real attempt was made to reach the device.
-    # SKIPPED: the scheduler deliberately did not attempt it (a missed
-    # schedule with Settings.catch_up_missed off). error_message is
-    # reused for the human-readable reason in this case, and
-    # request_payload stays null since nothing was actually sent.
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Snapshot of what was actually POSTed to the device, kept so a
-    # failure can be debugged later without needing to reproduce it.
+    # List of {"device_id": str, "status": "success"|"failed"|"skipped",
+    # "error_message": str|None}, one entry per device the schedule
+    # targeted at fire time. device_id is not a foreign key (it can't
+    # be, embedded in JSON), so it may point at a since-deleted device;
+    # callers resolve it against the current Device table and handle a
+    # miss gracefully rather than assuming it always still exists.
+    device_results: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+
+    # Snapshot of what was actually POSTed to every targeted device
+    # (the same body goes to all of them), kept so a failure can be
+    # debugged later without needing to reproduce it. Null when
+    # skipped, since nothing was actually sent.
     request_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     schedule: Mapped["Schedule"] = relationship(back_populates="executions")
-    device: Mapped["Device"] = relationship(back_populates="executions")
 
-    __table_args__ = (
-        Index("ix_schedule_executions_fired_at", "fired_at"),
-        CheckConstraint(
-            "status IN ('success', 'failed', 'skipped')", name="ck_schedule_execution_status_valid"
-        ),
-    )
+    __table_args__ = (Index("ix_schedule_executions_fired_at", "fired_at"),)
+
+    @property
+    def overall_status(self) -> str:
+        return compute_overall_status(self.device_results)
 
     def __repr__(self) -> str:
         return (
-            f"ScheduleExecution(id={self.id!r}, status={self.status!r}, "
+            f"ScheduleExecution(id={self.id!r}, overall_status={self.overall_status!r}, "
             f"fired_at={self.fired_at!r})"
         )

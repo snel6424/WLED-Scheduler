@@ -28,6 +28,41 @@ function rgbToHex([r, g, b]) {
   return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 
+// Custom color picker only exposes hue + saturation (value is fixed at
+// 100%; dimming is the separate Brightness slider), so these only need
+// to round-trip those two axes, not a full HSV/RGB implementation.
+function hsToRgb(h, s) {
+  const c = s / 100;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  let [r, g, b] = [0, 0, 0];
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = 1 - c;
+  return [r, g, b].map((v) => Math.round((v + m) * 255));
+}
+function rgbToHs([r, g, b]) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return [Math.round(h), Math.round(s * 100)];
+}
+
 // Sets a radio button's checked state and dispatches a change event so
 // Alpine's x-model binding picks up the new value reactively. Without
 // the event, setting .checked programmatically doesn't notify Alpine.
@@ -50,12 +85,22 @@ function updateActionModeVisibility() {
   }
 }
 
+// Devices are a checkbox-pill picker (#device-toggles), not a <select>,
+// since a schedule can now target more than one. Presets are still
+// loaded from a single device's /presets.json (WLED preset numbers are
+// per-device, there's no cross-device notion of "the same preset"), so
+// the preset dropdown always reflects whichever selected device is
+// first in the list.
+function getSelectedDeviceIds() {
+  return Array.from(document.querySelectorAll('#device-toggles input:checked')).map((i) => i.value);
+}
+
 function updateSaveButtonState() {
   const saveBtn = document.getElementById("save-btn");
-  const deviceDisabled = document.getElementById("device-select").disabled;
+  const noDevicesSelected = getSelectedDeviceIds().length === 0;
   const presetMode = document.getElementById("action-preset").checked;
   const presetDisabled = document.getElementById("preset-select").disabled;
-  saveBtn.disabled = deviceDisabled || (presetMode && presetDisabled);
+  saveBtn.disabled = noDevicesSelected || (presetMode && presetDisabled);
 }
 
 function updateRepeatAnnuallyVisibility() {
@@ -78,7 +123,11 @@ document.querySelectorAll('input[name="action_mode"]').forEach((r) =>
 document.getElementById("brightness").addEventListener("input", (event) => {
   document.getElementById("brightness-value").textContent = `${event.target.value}%`;
 });
-document.getElementById("device-select").addEventListener("change", () => {
+// Document-level delegation: #device-toggles' checkboxes are rebuilt
+// on every loadDevices() call, so a listener bound directly to them
+// wouldn't survive a reload.
+document.getElementById("device-toggles").addEventListener("change", () => {
+  updateSaveButtonState();
   if (document.getElementById("action-preset").checked) loadPresetsForSelectedDevice();
 });
 
@@ -103,13 +152,13 @@ function setPresetEmptyState(message) {
   hint.innerHTML = message || "";
 }
 
-async function loadDevices(selectedId) {
+async function loadDevices(selectedIds) {
   const devices = await apiGet("/api/devices");
-  const select = document.getElementById("device-select");
+  const container = document.getElementById("device-toggles");
+  const selected = new Set(selectedIds || []);
 
   if (devices.length === 0) {
-    select.innerHTML = `<option value="">No devices available</option>`;
-    select.disabled = true;
+    container.innerHTML = "";
     setDeviceEmptyState(
       'No devices yet. <a href="/devices">Add a device</a> before creating a schedule.'
     );
@@ -121,12 +170,15 @@ async function loadDevices(selectedId) {
     return;
   }
 
-  select.disabled = false;
   setDeviceEmptyState("");
-  select.innerHTML = devices.map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");
-  if (selectedId && devices.some((d) => d.id === selectedId)) {
-    select.value = selectedId;
-  }
+  container.innerHTML = devices
+    .map((d) => {
+      const icon = ICONS[d.icon] || ICONS.lightbulb;
+      const checked = selected.has(d.id) ? "checked" : "";
+      return `<input type="checkbox" id="device-${d.id}" value="${d.id}" ${checked}>` +
+        `<label for="device-${d.id}">${icon}${escapeHtml(d.name)}</label>`;
+    })
+    .join("");
   const presetSelect = document.getElementById("preset-select");
   presetSelect.disabled = false;
   setPresetEmptyState("");
@@ -134,7 +186,9 @@ async function loadDevices(selectedId) {
 }
 
 async function loadPresetsForSelectedDevice(selectedPresetId) {
-  const deviceId = document.getElementById("device-select").value;
+  // Presets are per-device on WLED itself; when several devices are
+  // selected, the dropdown reflects whichever one is first.
+  const deviceId = getSelectedDeviceIds()[0];
   const select = document.getElementById("preset-select");
   if (!deviceId) {
     select.innerHTML = "";
@@ -182,7 +236,7 @@ async function loadExistingSchedule() {
   document.getElementById("start-date").value = schedule.start_date || "";
   document.getElementById("end-date").value = schedule.end_date || "";
   document.getElementById("repeat-annually").checked = !!schedule.repeat_annually;
-  await loadDevices(schedule.device.id);
+  await loadDevices(schedule.devices.map((d) => d.id));
 
   const action = schedule.action;
   existingActionId = action.id;
@@ -199,7 +253,7 @@ async function loadExistingSchedule() {
       document.getElementById("brightness-value").textContent = `${briToPercent(action.payload.bri)}%`;
     }
     const col = action.payload.seg && action.payload.seg[0] && action.payload.seg[0].col && action.payload.seg[0].col[0];
-    if (col) document.getElementById("color").value = rgbToHex(col);
+    if (col) document.dispatchEvent(new CustomEvent("set-color", { detail: rgbToHex(col) }));
   }
 
   if (action.transition_ms != null) {
@@ -223,7 +277,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     const schedulePayload = {
       name: document.getElementById("name").value.trim(),
       description: document.getElementById("description").value.trim() || null,
-      device_id: document.getElementById("device-select").value,
+      device_ids: getSelectedDeviceIds(),
       trigger_type: triggerType,
       time_of_day: triggerType === "time" ? document.getElementById("time-of-day").value + ":00" : null,
       offset_minutes: triggerType === "time" ? null : Number(document.getElementById("offset-minutes").value),
@@ -279,6 +333,23 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
   }
 });
 
+function reportRunResult(deviceResults) {
+  if (!deviceResults || deviceResults.length === 0) {
+    toast("No devices to run", { error: true });
+    return;
+  }
+  const succeeded = deviceResults.filter((r) => r.status === "success").length;
+  const total = deviceResults.length;
+  if (succeeded === total) {
+    toast(total === 1 ? "Ran successfully" : `Ran successfully on all ${total} devices`);
+  } else if (succeeded === 0) {
+    const firstError = deviceResults.find((r) => r.error_message)?.error_message;
+    toast(firstError || "Run failed", { error: true });
+  } else {
+    toast(`Ran on ${succeeded}/${total} devices; see history for details`, { error: true });
+  }
+}
+
 document.getElementById("run-now-btn").addEventListener("click", async () => {
   const btn = document.getElementById("run-now-btn");
   btn.disabled = true;
@@ -287,16 +358,13 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
       // Existing schedule: route through the schedule's run-now endpoint so
       // the execution is recorded in history, exactly as the scheduler does.
       const result = await apiPost(`/api/schedules/${SCHEDULE_ID}/run-now`, {});
-      if (result.status === "success") {
-        toast("Ran successfully");
-      } else {
-        toast(result.error_message || "Run failed", { error: true });
-      }
+      reportRunResult(result.device_results);
     } else {
-      // New schedule (not yet saved): preview using current form state.
-      const deviceId = document.getElementById("device-select").value;
-      if (!deviceId) {
-        toast("Select a device first", { error: true });
+      // New schedule (not yet saved): preview using current form state,
+      // applied directly to every currently-selected device.
+      const deviceIds = getSelectedDeviceIds();
+      if (deviceIds.length === 0) {
+        toast("Select at least one device first", { error: true });
         return;
       }
 
@@ -320,12 +388,15 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
         }
       }
 
-      const result = await apiPost(`/api/devices/${deviceId}/apply`, { payload });
-      if (result.status === "success") {
-        toast("Ran successfully");
-      } else {
-        toast(`Run failed: ${result.error_message || "unknown error"}`, { error: true });
-      }
+      const results = await Promise.all(
+        deviceIds.map((id) =>
+          apiPost(`/api/devices/${id}/apply`, { payload }).then(
+            (r) => ({ status: r.status === "success" ? "success" : "failed", error_message: r.error_message }),
+            (err) => ({ status: "failed", error_message: formatError(err) })
+          )
+        )
+      );
+      reportRunResult(results);
     }
   } catch (err) {
     toast(formatError(err), { error: true });

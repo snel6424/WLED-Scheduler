@@ -12,10 +12,11 @@ instead of just living in a planning doc.
 """
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
 
-from app.models import ActionType, ExecutionStatus, TriggerType
+from app.models import ActionType, ExecutionStatus, TriggerType, compute_overall_status
 
 # ---------------------------------------------------------------------------
 # Action payload sub-schemas
@@ -200,7 +201,7 @@ class SettingsUpdate(BaseModel):
 class ScheduleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
-    device_id: str
+    device_ids: list[str] = Field(..., min_length=1)
     action_id: str
     trigger_type: TriggerType
     time_of_day: time | None = None
@@ -240,7 +241,7 @@ class ScheduleCreate(ScheduleBase):
 class ScheduleUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
-    device_id: str | None = None
+    device_ids: list[str] | None = Field(None, min_length=1)
     action_id: str | None = None
     trigger_type: TriggerType | None = None
     time_of_day: time | None = None
@@ -271,22 +272,41 @@ class ScheduleRead(BaseModel):
     next_run_at: datetime | None
     last_run_at: datetime | None
     icon: str | None
-    device: DeviceSummary
+    devices: list[DeviceSummary]
     action: ActionRead
 
     model_config = ConfigDict(from_attributes=True)
 
 
+OverallStatus = Literal["success", "failed", "partial", "skipped"]
+
+
+class DeviceResultRead(BaseModel):
+    """One device's outcome within a ScheduleExecution. `device` is
+    None if that device has since been deleted; device_id inside
+    device_results isn't a foreign key (it's embedded in JSON), so it
+    can outlive the row it refers to."""
+
+    device: DeviceSummary | None
+    status: ExecutionStatus
+    error_message: str | None
+
+
 class ScheduleExecutionRead(BaseModel):
     id: str
     schedule_id: str
-    device_id: str
     fired_at: datetime
-    status: ExecutionStatus
-    error_message: str | None
+    device_results: list[DeviceResultRead]
     request_payload: dict | None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def overall_status(self) -> OverallStatus:
+        return compute_overall_status(
+            [{"status": r.status.value} for r in self.device_results]
+        )
 
 
 class ScheduleSummary(BaseModel):
@@ -314,16 +334,23 @@ class ActionSummary(BaseModel):
 
 class HistoryEntryRead(BaseModel):
     """Same underlying ScheduleExecution row as ScheduleExecutionRead,
-    but with the schedule, device, and action embedded, since the
-    aggregate history view (unlike the per-schedule one) doesn't
-    already have that context from the page it's on."""
+    but with the schedule and action embedded, since the aggregate
+    history view (unlike the per-schedule one) doesn't already have
+    that context from the page it's on. device_results carries one
+    entry per device the schedule targeted at fire time, same as
+    ScheduleExecutionRead."""
 
     id: str
     fired_at: datetime
-    status: ExecutionStatus
-    error_message: str | None
     schedule: ScheduleSummary
-    device: DeviceSummary
     action: ActionSummary
+    device_results: list[DeviceResultRead]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def overall_status(self) -> OverallStatus:
+        return compute_overall_status(
+            [{"status": r.status.value} for r in self.device_results]
+        )

@@ -51,23 +51,44 @@ def _is_stale(schedule: Schedule, now: datetime) -> bool:
 
 def _fire(db: Session, schedule: Schedule) -> None:
     action = schedule.action
-    device = schedule.device
 
-    execution = ScheduleExecution(
-        schedule_id=schedule.id,
-        device_id=device.id,
-        status=ExecutionStatus.FAILED,
-        request_payload=action.payload,
-    )
-    try:
-        wled_client.post_state(device.host, action.payload, transition_ms=action.transition_ms)
-    except WledClientError as exc:
-        execution.error_message = str(exc)
-        logger.warning("Schedule %s (%r) failed to fire: %s", schedule.id, schedule.name, exc)
-    else:
-        execution.status = ExecutionStatus.SUCCESS
+    device_results = []
+    any_success = False
+    for device in schedule.devices:
+        try:
+            wled_client.post_state(device.host, action.payload, transition_ms=action.transition_ms)
+        except WledClientError as exc:
+            device_results.append(
+                {
+                    "device_id": device.id,
+                    "status": ExecutionStatus.FAILED.value,
+                    "error_message": str(exc),
+                }
+            )
+            logger.warning(
+                "Schedule %s (%r) failed to fire on device %s: %s",
+                schedule.id, schedule.name, device.id, exc,
+            )
+        else:
+            any_success = True
+            device_results.append(
+                {
+                    "device_id": device.id,
+                    "status": ExecutionStatus.SUCCESS.value,
+                    "error_message": None,
+                }
+            )
+
+    if any_success:
         schedule.last_run_at = utcnow()
-    db.add(execution)
+
+    db.add(
+        ScheduleExecution(
+            schedule_id=schedule.id,
+            device_results=device_results,
+            request_payload=action.payload,
+        )
+    )
 
 
 def _skip(db: Session, schedule: Schedule, now: datetime) -> None:
@@ -77,12 +98,14 @@ def _skip(db: Session, schedule: Schedule, now: datetime) -> None:
         "so it was advanced to its next occurrence without firing."
     )
     logger.info("Schedule %s (%r): %s", schedule.id, schedule.name, reason)
+    device_results = [
+        {"device_id": device.id, "status": ExecutionStatus.SKIPPED.value, "error_message": reason}
+        for device in schedule.devices
+    ]
     db.add(
         ScheduleExecution(
             schedule_id=schedule.id,
-            device_id=schedule.device_id,
-            status=ExecutionStatus.SKIPPED,
-            error_message=reason,
+            device_results=device_results,
         )
     )
 

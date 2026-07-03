@@ -77,34 +77,6 @@
   </label>
 </div>
 
-<h3 style="margin-top: 2rem;">System</h3>
-
-{% if network.ip %}
-<div class="input-row">
-  <div class="input-row__icon">
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>
-  </div>
-  <div class="input-row__body">
-    <label style="margin-bottom: 2px;">Network address</label>
-    <div class="muted" style="font-size: 0.85rem;">{{ network.ip }} · {{ network.local_hostname }}</div>
-  </div>
-</div>
-{% endif %}
-
-<div class="input-row">
-  <div class="input-row__icon">
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-  </div>
-  <div class="input-row__body">
-    <label style="margin-bottom: 2px;">Last database backup</label>
-    {% if last_backup %}
-    <div class="muted" style="font-size: 0.85rem;">{{ last_backup }}</div>
-    {% else %}
-    <div class="muted" style="font-size: 0.85rem;">No backups yet — created automatically before each database migration.</div>
-    {% endif %}
-  </div>
-</div>
-
 <h3 style="margin-top: 2rem;">Updates</h3>
 
 <div class="input-row">
@@ -120,7 +92,7 @@
 
 <div id="update-action" hidden style="margin-top: 0.75rem;"></div>
 
-<h3 style="margin-top: 2rem;">About</h3>
+<h3 style="margin-top: 2rem;">System</h3>
 
 <div class="input-row">
   <div class="input-row__icon">
@@ -128,7 +100,43 @@
   </div>
   <div class="input-row__body">
     <label style="margin-bottom: 2px;">WLED Scheduler</label>
-    <div class="muted" style="font-size: 0.85rem;">Version {{ app_version }} · MIT licensed</div>
+    <div class="muted" style="font-size: 0.85rem;">Version {{ system.version }} · MIT licensed · <a href="https://github.com/snel6424/WLED-Scheduler" target="_blank" rel="noopener">GitHub</a></div>
+  </div>
+</div>
+
+{% if network.ip %}
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label style="margin-bottom: 2px;">Network address</label>
+    <div class="muted" style="font-size: 0.85rem;">{{ network.ip }} · {{ network.local_hostname }}</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label style="margin-bottom: 2px;">Uptime</label>
+    <div class="muted" style="font-size: 0.85rem;">{{ system.uptime }} · started {{ system.started_at }}</div>
+  </div>
+</div>
+
+<div class="input-row">
+  <div class="input-row__icon">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+  </div>
+  <div class="input-row__body">
+    <label style="margin-bottom: 2px;">Last database backup</label>
+    {% if last_backup %}
+    <div class="muted" style="font-size: 0.85rem;">{{ last_backup }}</div>
+    {% else %}
+    <div class="muted" style="font-size: 0.85rem;">No backups yet — created automatically before each database migration.</div>
+    {% endif %}
   </div>
 </div>
 

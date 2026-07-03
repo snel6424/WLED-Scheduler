@@ -3,10 +3,21 @@
 Replaces the old HTTP-polling device health check entirely, per a
 deliberate reversal of the original "HTTP reachability checks, not
 mDNS or ICMP" v1 decision (see CLAUDE.md). WLED devices advertise
-themselves via DNS-SD as `_wled._tcp.local.`, confirmed via a real
-packet capture rather than assumed from documentation, and also
-advertise the generic `_http._tcp.local.` alongside it, so every
-browse in this module filters specifically for the WLED service type.
+themselves via DNS-SD, but NOT reliably under one service type: some
+firmware (confirmed against real hardware, not just documentation)
+only advertises the generic `_http._tcp.local.`, not `_wled._tcp.local.`
+at all -- a live browse for `_wled._tcp` alone silently missed a real
+device that `_http._tcp` found immediately. So every browse here
+queries both service types and merges the results.
+
+Browsing `_http._tcp` means seeing every HTTP-speaking device on the
+LAN, not just WLED ones (printers, cameras, smart-home hubs, ...) --
+that's fine for the persistent health-check listener below, since it
+only ever acts on devices already matched to a `Device` row (anything
+else is silently ignored), but the discovery flow (`scan()`) actively
+surfaces new devices to the user, so results reached only via
+`_http._tcp` get a real `/json/info` check before being shown, to
+filter out everything that isn't actually WLED.
 
 This module owns two things:
 
@@ -59,13 +70,16 @@ from zeroconf import (
 from zeroconf import const as zc_const
 from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZeroconf
 
-from app import config
+from app import config, wled_client
 from app.database import SessionLocal
 from app.models import Device, utcnow
+from app.wled_client import WledClientError
 
 logger = logging.getLogger("app.mdns")
 
-SERVICE_TYPE = "_wled._tcp.local."
+WLED_SERVICE_TYPE = "_wled._tcp.local."
+HTTP_SERVICE_TYPE = "_http._tcp.local."
+SERVICE_TYPES = [WLED_SERVICE_TYPE, HTTP_SERVICE_TYPE]
 RESOLVE_TIMEOUT_MS = 3000
 SWEEP_INTERVAL_SECONDS = config.MDNS_SWEEP_INTERVAL_SECONDS
 OFFLINE_MISS_THRESHOLD = config.MDNS_OFFLINE_MISS_THRESHOLD
@@ -80,6 +94,20 @@ def strip_local_suffix(hostname: str) -> str:
 
 def to_fqdn(mdns_name: str) -> str:
     return f"{mdns_name}.local."
+
+
+def ip_and_port_to_host(ip: str, port: int | None) -> str:
+    """Builds a `Device.host`-shaped string from an mDNS-resolved
+    address. Always the IP zeroconf itself resolved from the A record
+    -- never the `.local` hostname -- since the container's standard
+    resolver cannot resolve `.local` names at all (confirmed: a plain
+    `socket.gethostbyname('some-device.local')` raises `gaierror`
+    inside the container; `.local` only resolves via mDNS). Anything
+    that ends up calling wled_client with a `.local` string instead of
+    this will fail every time it runs, not just sometimes."""
+    if port in (None, 80):
+        return ip
+    return f"{ip}:{port}"
 
 
 def strip_port(host: str) -> str:
@@ -250,8 +278,12 @@ def _apply_resolved_service(mdns_name: str, ip: str | None) -> None:
         db.commit()
 
 
-async def _resolve_and_mark_online(zc: Zeroconf, name: str) -> None:
-    info = AsyncServiceInfo(SERVICE_TYPE, name)
+async def _resolve_and_mark_online(zc: Zeroconf, service_type: str, name: str) -> None:
+    # No WLED-verification needed here even though _http._tcp surfaces
+    # every HTTP device on the LAN: _apply_resolved_service only ever
+    # acts on a device already matched to a Device row, so anything
+    # irrelevant just fails to match and is silently ignored.
+    info = AsyncServiceInfo(service_type, name)
     try:
         ok = await info.async_request(zc, RESOLVE_TIMEOUT_MS)
     except Exception:
@@ -268,7 +300,7 @@ async def _resolve_and_mark_online(zc: Zeroconf, name: str) -> None:
 def _make_browser_handler(zc: Zeroconf):
     def handler(zeroconf, service_type, name, state_change):
         if state_change in (ServiceStateChange.Added, ServiceStateChange.Updated):
-            asyncio.create_task(_resolve_and_mark_online(zc, name))
+            asyncio.create_task(_resolve_and_mark_online(zc, service_type, name))
         # ServiceStateChange.Removed is intentionally not handled -- see
         # the module docstring for why.
     return handler
@@ -326,7 +358,7 @@ async def start() -> MdnsMonitor | None:
         goodbye_listener = _GoodbyeListener()
         azc.zeroconf.async_add_listener(goodbye_listener, None)
         browser = AsyncServiceBrowser(
-            azc.zeroconf, SERVICE_TYPE, handlers=[_make_browser_handler(azc.zeroconf)]
+            azc.zeroconf, SERVICE_TYPES, handlers=[_make_browser_handler(azc.zeroconf)]
         )
     except Exception:
         logger.exception(
@@ -361,8 +393,24 @@ async def stop(monitor: MdnsMonitor | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_for_scan(zc: Zeroconf, name: str, found: dict[str, dict]) -> None:
-    info = AsyncServiceInfo(SERVICE_TYPE, name)
+def _looks_like_wled(host: str) -> bool:
+    """Confirms a device found only via the generic _http._tcp browse
+    is actually WLED, by checking the same /json/info endpoint
+    create_device already relies on for real devices. `host` must be
+    the mDNS-resolved IP (see ip_and_port_to_host) -- never the
+    `.local` hostname, which the container's standard resolver can't
+    resolve at all."""
+    try:
+        info = wled_client.get_info(host)
+    except WledClientError:
+        return False
+    return "leds" in info and "ver" in info
+
+
+async def _resolve_for_scan(
+    zc: Zeroconf, service_type: str, name: str, found: dict[str, dict]
+) -> None:
+    info = AsyncServiceInfo(service_type, name)
     try:
         ok = await info.async_request(zc, RESOLVE_TIMEOUT_MS)
     except Exception:
@@ -374,9 +422,19 @@ async def _resolve_for_scan(zc: Zeroconf, name: str, found: dict[str, dict]) -> 
     if not addresses:
         return
     mdns_name = strip_local_suffix(info.server)
+    host = ip_and_port_to_host(addresses[0], info.port)
+
+    if service_type == HTTP_SERVICE_TYPE:
+        # _http._tcp is generic -- some WLED firmware only advertises
+        # this (confirmed against real hardware; not every version
+        # also advertises _wled._tcp), but so does every other
+        # HTTP-speaking device on the LAN. Confirm before surfacing it.
+        if not await asyncio.to_thread(_looks_like_wled, host):
+            return
+
     found[mdns_name] = {
         "mdns_name": mdns_name,
-        "host": addresses[0],
+        "host": host,
         "name": info.get_name(),
         "port": info.port,
     }
@@ -389,14 +447,21 @@ async def scan(timeout: float = 5.0) -> list[dict]:
     regardless of whether the persistent listener managed to start."""
     azc = AsyncZeroconf()
     found: dict[str, dict] = {}
+    pending: list[asyncio.Task] = []
 
     def handler(zeroconf, service_type, name, state_change):
         if state_change is ServiceStateChange.Added:
-            asyncio.create_task(_resolve_for_scan(zeroconf, name, found))
+            task = asyncio.create_task(_resolve_for_scan(zeroconf, service_type, name, found))
+            pending.append(task)
 
-    browser = AsyncServiceBrowser(azc.zeroconf, SERVICE_TYPE, handlers=[handler])
+    browser = AsyncServiceBrowser(azc.zeroconf, SERVICE_TYPES, handlers=[handler])
     try:
         await asyncio.sleep(timeout)
+        # Give in-flight resolutions (including the _looks_like_wled
+        # HTTP check) a moment to land rather than discarding results
+        # that were seconds away from completing when the timer fired.
+        if pending:
+            await asyncio.wait(pending, timeout=RESOLVE_TIMEOUT_MS / 1000)
     finally:
         await browser.async_cancel()
         await azc.async_close()

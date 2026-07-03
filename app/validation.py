@@ -52,7 +52,7 @@ def merge_and_validate_schedule(
     PATCH happened to include."""
     merged = {
         "name": existing.name,
-        "device_id": existing.device_id,
+        "device_ids": [d.id for d in existing.devices],
         "action_id": existing.action_id,
         "trigger_type": existing.trigger_type,
         "time_of_day": existing.time_of_day,

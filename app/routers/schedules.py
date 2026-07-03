@@ -37,6 +37,7 @@ from app.schemas import (
 )
 from app.sun import LocationNotConfigured
 from app.validation import merge_and_validate_schedule
+from app.view_helpers import build_device_results, load_devices_by_id
 from app.wled_client import WledClientError
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
@@ -57,6 +58,32 @@ def _get_schedule_or_404(db: Session, schedule_id: str) -> Schedule:
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return schedule
+
+
+def _get_devices_or_404(db: Session, device_ids: list[str]) -> list[Device]:
+    devices = list(db.execute(select(Device).where(Device.id.in_(device_ids))).scalars())
+    found_ids = {d.id for d in devices}
+    missing = [d for d in device_ids if d not in found_ids]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Device not found: {missing[0]}")
+    # Preserve the caller's order/de-duplication rather than whatever
+    # order the IN (...) query happened to return.
+    by_id = {d.id: d for d in devices}
+    seen: dict[str, Device] = {}
+    for device_id in device_ids:
+        seen[device_id] = by_id[device_id]
+    return list(seen.values())
+
+
+def _execution_response(db: Session, execution: ScheduleExecution) -> dict:
+    devices_by_id = load_devices_by_id(db, {r["device_id"] for r in execution.device_results})
+    return {
+        "id": execution.id,
+        "schedule_id": execution.schedule_id,
+        "fired_at": execution.fired_at,
+        "device_results": build_device_results(devices_by_id, execution.device_results),
+        "request_payload": execution.request_payload,
+    }
 
 
 def _recompute_next_run_at(db: Session, schedule: Schedule) -> None:
@@ -80,15 +107,14 @@ def _recompute_next_run_at(db: Session, schedule: Schedule) -> None:
 
 @router.post("", response_model=ScheduleRead, status_code=201)
 def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> Schedule:
-    if db.get(Device, payload.device_id) is None:
-        raise HTTPException(status_code=404, detail="Device not found")
+    devices = _get_devices_or_404(db, payload.device_ids)
     if db.get(Action, payload.action_id) is None:
         raise HTTPException(status_code=404, detail="Action not found")
 
     schedule = Schedule(
         name=payload.name,
         description=payload.description,
-        device_id=payload.device_id,
+        devices=devices,
         action_id=payload.action_id,
         trigger_type=payload.trigger_type,
         time_of_day=payload.time_of_day,
@@ -111,7 +137,7 @@ def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> S
 def list_schedules(device_id: str | None = None, db: Session = Depends(get_db)) -> list[Schedule]:
     stmt = select(Schedule).order_by(Schedule.name)
     if device_id is not None:
-        stmt = stmt.where(Schedule.device_id == device_id)
+        stmt = stmt.where(Schedule.devices.any(Device.id == device_id))
     return list(db.execute(stmt).scalars())
 
 
@@ -126,8 +152,9 @@ def update_schedule(
 ) -> Schedule:
     schedule = _get_schedule_or_404(db, schedule_id)
 
-    if payload.device_id is not None and db.get(Device, payload.device_id) is None:
-        raise HTTPException(status_code=404, detail="Device not found")
+    new_devices = None
+    if payload.device_ids is not None:
+        new_devices = _get_devices_or_404(db, payload.device_ids)
     if payload.action_id is not None and db.get(Action, payload.action_id) is None:
         raise HTTPException(status_code=404, detail="Action not found")
 
@@ -139,7 +166,8 @@ def update_schedule(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     schedule.name = validated.name
-    schedule.device_id = validated.device_id
+    if new_devices is not None:
+        schedule.devices = new_devices
     schedule.action_id = validated.action_id
     schedule.trigger_type = validated.trigger_type
     schedule.time_of_day = validated.time_of_day
@@ -170,41 +198,56 @@ def delete_schedule(schedule_id: str, db: Session = Depends(get_db)) -> None:
 
 
 @router.post("/{schedule_id}/run-now", response_model=ScheduleExecutionRead)
-def run_now(schedule_id: str, db: Session = Depends(get_db)) -> ScheduleExecution:
+def run_now(schedule_id: str, db: Session = Depends(get_db)) -> dict:
     schedule = _get_schedule_or_404(db, schedule_id)
     action = schedule.action
-    device = schedule.device
-
-    execution = ScheduleExecution(
-        schedule_id=schedule.id,
-        device_id=device.id,
-        status=ExecutionStatus.FAILED,
-        request_payload=action.payload,
-    )
 
     payload = action.payload
     if action.type == ActionType.STATE and payload.get("on") is not False and payload.get("seg"):
         segs = payload["seg"]
         payload = {**payload, "seg": [{**segs[0], "fx": 0}, *segs[1:]]}
 
-    try:
-        wled_client.post_state(device.host, payload, transition_ms=action.transition_ms)
-    except WledClientError as exc:
-        execution.error_message = str(exc)
-    else:
-        execution.status = ExecutionStatus.SUCCESS
+    device_results = []
+    any_success = False
+    for device in schedule.devices:
+        try:
+            wled_client.post_state(device.host, payload, transition_ms=action.transition_ms)
+        except WledClientError as exc:
+            device_results.append(
+                {
+                    "device_id": device.id,
+                    "status": ExecutionStatus.FAILED.value,
+                    "error_message": str(exc),
+                }
+            )
+        else:
+            any_success = True
+            device_results.append(
+                {
+                    "device_id": device.id,
+                    "status": ExecutionStatus.SUCCESS.value,
+                    "error_message": None,
+                }
+            )
+
+    if any_success:
         schedule.last_run_at = utcnow()
 
+    execution = ScheduleExecution(
+        schedule_id=schedule.id,
+        device_results=device_results,
+        request_payload=action.payload,
+    )
     db.add(execution)
     db.commit()
     db.refresh(execution)
-    return execution
+    return _execution_response(db, execution)
 
 
 @router.get("/{schedule_id}/executions", response_model=list[ScheduleExecutionRead])
 def list_executions(
     schedule_id: str, limit: int = 20, offset: int = 0, db: Session = Depends(get_db)
-) -> list[ScheduleExecution]:
+) -> list[dict]:
     _get_schedule_or_404(db, schedule_id)
     limit = max(1, min(limit, 100))
     stmt = (
@@ -214,4 +257,17 @@ def list_executions(
         .limit(limit)
         .offset(offset)
     )
-    return list(db.execute(stmt).scalars())
+    executions = list(db.execute(stmt).scalars())
+    devices_by_id = load_devices_by_id(
+        db, {r["device_id"] for e in executions for r in e.device_results}
+    )
+    return [
+        {
+            "id": e.id,
+            "schedule_id": e.schedule_id,
+            "fired_at": e.fired_at,
+            "device_results": build_device_results(devices_by_id, e.device_results),
+            "request_payload": e.request_payload,
+        }
+        for e in executions
+    ]

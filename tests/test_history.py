@@ -10,13 +10,14 @@ from app.models import ExecutionStatus, Schedule, ScheduleExecution, TriggerType
 
 def _make_execution(db, device, action, status=ExecutionStatus.SUCCESS, fired_at=None):
     schedule = Schedule(
-        name="Dusk", device_id=device.id, action_id=action.id,
+        name="Dusk", devices=[device], action_id=action.id,
         trigger_type=TriggerType.SUNSET, offset_minutes=-10,
     )
     db.add(schedule)
     db.flush()
     execution = ScheduleExecution(
-        schedule_id=schedule.id, device_id=device.id, status=status,
+        schedule_id=schedule.id,
+        device_results=[{"device_id": device.id, "status": status.value, "error_message": None}],
         fired_at=fired_at or utcnow(),
     )
     db.add(execution)
@@ -36,7 +37,8 @@ def test_history_entry_embeds_schedule_and_device_names(client, db, device, pres
     entries = response.json()
     assert len(entries) == 1
     assert entries[0]["schedule"]["name"] == "Dusk"
-    assert entries[0]["device"]["name"] == device["name"]
+    assert entries[0]["device_results"][0]["device"]["name"] == device["name"]
+    assert entries[0]["overall_status"] == "success"
 
 
 def test_history_filters_by_device(client, db, device, preset_action):
@@ -53,7 +55,7 @@ def test_history_filters_by_device(client, db, device, preset_action):
     response = client.get(f"/api/history?device_id={device_a.id}")
     assert response.status_code == 200
     assert len(response.json()) == 1
-    assert response.json()[0]["device"]["name"] == "Porch"
+    assert response.json()[0]["device_results"][0]["device"]["name"] == "Porch"
 
 
 def test_history_filters_by_date_range(client, db, device, preset_action):
@@ -108,3 +110,60 @@ def test_history_entry_embeds_action_for_state_type(client, db, device):
     entry = client.get("/api/history").json()[0]
     assert entry["action"]["type"] == "state"
     assert entry["action"]["payload"]["on"] is False
+
+
+def test_history_entry_shows_per_device_results_with_partial_overall_status(
+    client, db, device, preset_action
+):
+    """One execution covering several devices is one history entry, not
+    one per device, with a mixed-outcome overall_status of 'partial'."""
+    from app.models import Action, Device
+
+    device_a = db.get(Device, device["id"])
+    device_b = Device(name="Lamp", host="9.9.9.8")
+    db.add(device_b)
+    db.flush()
+    action = db.get(Action, preset_action["id"])
+
+    schedule = Schedule(
+        name="Dusk", devices=[device_a, device_b], action_id=action.id,
+        trigger_type=TriggerType.SUNSET, offset_minutes=-10,
+    )
+    db.add(schedule)
+    db.flush()
+    db.add(
+        ScheduleExecution(
+            schedule_id=schedule.id,
+            device_results=[
+                {"device_id": device_a.id, "status": "success", "error_message": None},
+                {"device_id": device_b.id, "status": "failed", "error_message": "timed out"},
+            ],
+        )
+    )
+    db.commit()
+
+    entries = client.get("/api/history").json()
+    assert len(entries) == 1
+    assert entries[0]["overall_status"] == "partial"
+    results = {r["device"]["name"]: r for r in entries[0]["device_results"]}
+    assert results["Porch"]["status"] == "success"
+    assert results["Lamp"]["status"] == "failed"
+    assert results["Lamp"]["error_message"] == "timed out"
+
+
+def test_history_entry_handles_since_deleted_device(client, db, device, preset_action):
+    """device_results.device_id isn't a foreign key (it's embedded in
+    JSON), so it can outlive the device it refers to; the API should
+    still return the entry with device: null rather than erroring."""
+    from app.models import Action, Device
+
+    device_row = db.get(Device, device["id"])
+    action = db.get(Action, preset_action["id"])
+    _make_execution(db, device_row, action)
+
+    db.delete(device_row)
+    db.commit()
+
+    entries = client.get("/api/history").json()
+    assert len(entries) == 1
+    assert entries[0]["device_results"][0]["device"] is None

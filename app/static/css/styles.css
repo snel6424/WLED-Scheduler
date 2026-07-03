@@ -478,6 +478,42 @@ legend {
   cursor: not-allowed;
 }
 
+/* Device picker: multi-select pills for a schedule's target devices.
+   Same checked-pill visual language as .segmented, but wraps and each
+   pill sizes to its label instead of splitting the row evenly, since
+   the device count and name lengths both vary. */
+.device-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.device-toggles input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.device-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.device-toggles label svg {
+  width: 14px;
+  height: 14px;
+}
+.device-toggles input:checked + label {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-wash);
+}
+
 /* Day-of-week toggles */
 .day-toggles {
   display: flex;
@@ -577,6 +613,14 @@ legend {
   background: var(--danger-wash);
   color: var(--danger);
 }
+.icon-avatar--warning {
+  background: var(--amber-wash);
+  color: var(--amber);
+}
+.icon-avatar--wifi {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
 
 .schedule-row {
   display: flex;
@@ -643,6 +687,32 @@ legend {
   height: 14px;
 }
 
+/* Per-device breakdown within one history row: a schedule that fired
+   against several devices at once, each with its own outcome. */
+.history-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.history-device {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+}
+.history-device__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .filter-row {
   display: flex;
   gap: var(--space-2);
@@ -665,6 +735,7 @@ input[type="number"]::-webkit-inner-spin-button {
   margin: 0;
 }
 input[type="number"] {
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 .filter-pill {
@@ -861,6 +932,14 @@ input[type="number"] {
 }
 .input-row:has(+ .input-row) {
   border-radius: var(--radius) var(--radius) 0 0;
+}
+/* A row that both follows one row and precedes another (the middle of
+   a run of 3+) matches both rules above with equal specificity, so
+   source order alone decided it, always the :has() one, leaving its
+   top corners wrongly rounded. This selector is more specific than
+   either, so it wins outright and squares off all four corners. */
+.input-row + .input-row:has(+ .input-row) {
+  border-radius: 0;
 }
 .input-row__icon {
   width: 40px;
@@ -1129,11 +1208,11 @@ input[type="number"] {
   justify-content: center;
 }
 
-/* Brightness + color side-by-side layout */
+/* Brightness above color layout */
 #brightness-color-fields {
   display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  align-items: flex-start;
 }
 
 /* Range slider (brightness) */
@@ -1164,15 +1243,56 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* Color swatch input */
-input[type="color"] {
+/* Custom hue/saturation color picker (replaces native <input type="color">) */
+.color-picker__hue,
+.color-picker__sat {
+  margin: var(--space-2) 0 0;
+}
+/* `input.` prefix matches the specificity of the generic
+   input[type="range"] rule above (element + attribute selector) so
+   these win on tie-break by source order, rather than silently losing
+   to it, a plain class selector alone is less specific and would be
+   ignored for any property (background, box-shadow) also set there. */
+input.color-picker__hue {
+  background: linear-gradient(
+    to right,
+    hsl(0, 100%, 50%),
+    hsl(60, 100%, 50%),
+    hsl(120, 100%, 50%),
+    hsl(180, 100%, 50%),
+    hsl(240, 100%, 50%),
+    hsl(300, 100%, 50%),
+    hsl(360, 100%, 50%)
+  );
+}
+input.color-picker__hue::-webkit-slider-thumb,
+input.color-picker__sat::-webkit-slider-thumb {
+  border: 2px solid #fff;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+input.color-picker__hue::-moz-range-thumb,
+input.color-picker__sat::-moz-range-thumb {
+  border: 2px solid #fff;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.color-picker__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-3);
+}
+.color-picker__swatch {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   border: 1px solid var(--border);
-  padding: 0;
-  background: none;
-  cursor: pointer;
+  flex-shrink: 0;
+}
+.color-picker__hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
 
 .form-actions {

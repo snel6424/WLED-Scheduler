@@ -41,11 +41,16 @@
       </p>
       <div x-show="results && results.length > 0" x-cloak class="list" style="gap: var(--space-2); margin-top: 0.75rem;">
         <template x-for="r in (results || [])" :key="r.mdns_name">
-          <button type="button" class="row" style="width:100%; text-align:left; cursor:pointer;" @click="
+          <button type="button" class="row"
+                  style="display:flex; align-items:center; width:100%; text-align:left; border:none; background:var(--surface); font:inherit; color:inherit; cursor:pointer;"
+                  @click="
             document.getElementById('device-host').value = r.host;
             document.getElementById('device-name').value = r.name || '';
             document.getElementById('device-mdns-name').value = r.mdns_name;
           ">
+            <div class="icon-avatar icon-avatar--wifi" style="margin-right: 1rem;">
+              {{ picker_icon_svgs['wifi'] | safe }}
+            </div>
             <div class="row__main">
               <div class="row__title" x-text="r.name || r.mdns_name"></div>
               <div class="row__meta" x-text="r.host"></div>

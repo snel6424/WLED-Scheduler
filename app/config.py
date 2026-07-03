@@ -8,8 +8,18 @@ its own env-driven setting (the poll interval) too.
 """
 
 import os
+from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+
+# Set once, the first time this module is imported, which for a real
+# deployment is effectively process start (app.main imports app.config
+# at module load, before uvicorn starts accepting connections). Used to
+# compute uptime on request rather than storing it, so it stays correct
+# without a background ticker. A `--reload` code change spawns a new
+# process, so this correctly resets to that restart's time, not the
+# original one.
+START_TIME = datetime.now(UTC)
 
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/scheduler.db")
 SCHEDULER_POLL_INTERVAL_SECONDS = int(os.environ.get("SCHEDULER_POLL_INTERVAL_SECONDS", "30"))
