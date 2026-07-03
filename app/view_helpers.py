@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -90,7 +90,7 @@ def get_history_execution_rows(
     now_utc: datetime | None = None,
 ) -> list[ScheduleExecution]:
     """Fetch history rows with related schedule/device/action data loaded eagerly."""
-    now_utc = now_utc or datetime.now(timezone.utc)
+    now_utc = now_utc or datetime.now(UTC)
     stmt = (
         select(ScheduleExecution)
         .options(selectinload(ScheduleExecution.schedule).selectinload(Schedule.action))

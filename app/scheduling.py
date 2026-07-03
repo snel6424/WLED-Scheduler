@@ -95,7 +95,11 @@ def compute_next_run_at(
         if end_date is not None and search_start > end_date:
             return None
 
-        search_end = end_date if end_date is not None else search_start + timedelta(days=_LOOKAHEAD_DAYS)
+        search_end = (
+            end_date
+            if end_date is not None
+            else search_start + timedelta(days=_LOOKAHEAD_DAYS)
+        )
 
     candidate_date = search_start
     while candidate_date <= search_end:
@@ -106,9 +110,16 @@ def compute_next_run_at(
                 candidate_local = datetime.combine(candidate_date, time_of_day, tzinfo=tz)
             else:
                 events = sun_times(
-                    settings.latitude, settings.longitude, settings.timezone, candidate_date
+                    settings.latitude,
+                    settings.longitude,
+                    settings.timezone,
+                    candidate_date,
                 )
-                base = events["sunrise"] if trigger_type == TriggerType.SUNRISE else events["sunset"]
+                base = (
+                    events["sunrise"]
+                    if trigger_type == TriggerType.SUNRISE
+                    else events["sunset"]
+                )
                 candidate_local = base + timedelta(minutes=offset_minutes)
 
             if candidate_local > now_local:
@@ -116,7 +127,12 @@ def compute_next_run_at(
 
         candidate_date += timedelta(days=1)
 
-        if not annual and end_date is None and candidate_date > search_start + timedelta(days=_LOOKAHEAD_DAYS):
+        if (
+            not annual
+            and end_date is None
+            and candidate_date
+            > search_start + timedelta(days=_LOOKAHEAD_DAYS)
+        ):
             break
 
     return None

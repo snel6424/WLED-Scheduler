@@ -40,7 +40,12 @@ def test_create_with_unknown_device_is_404(client, preset_action, configured_set
     assert response.status_code == 404
 
 
-def test_create_schedule_rejects_invalid_date_range(client, device, preset_action, configured_settings):
+def test_create_schedule_rejects_invalid_date_range(
+    client,
+    device,
+    preset_action,
+    configured_settings,
+):
     response = client.post(
         "/api/schedules",
         json={
@@ -52,7 +57,12 @@ def test_create_schedule_rejects_invalid_date_range(client, device, preset_actio
     assert response.status_code == 422
 
 
-def test_update_schedule_rejects_invalid_date_range(client, device, preset_action, configured_settings):
+def test_update_schedule_rejects_invalid_date_range(
+    client,
+    device,
+    preset_action,
+    configured_settings,
+):
     created = client.post(
         "/api/schedules",
         json={

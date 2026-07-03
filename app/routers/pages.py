@@ -8,18 +8,18 @@ thin slices of the same data shaped for incremental DOM updates.
 
 import json
 import socket
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import config
 from app.database import get_db
-from app.models import Device, Schedule, ScheduleExecution, Settings
+from app.models import Device, Settings
 from app.schemas import DeviceRead, ScheduleRead
 from app.view_helpers import (
     get_device_reads,
@@ -79,10 +79,32 @@ templates.env.globals.update(
 
 # SVGs for status-based fallback icons in history (matches historyIcon() in icons.js).
 _HISTORY_FALLBACK_SVG = {
-    "success": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> <path d="M9 18h6" /> <path d="M10 22h4" /></svg>',
-    "failed":  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" /></svg>',
-    "skipped": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" /> <line x1="19" x2="19" y1="5" y2="19" /></svg>',
-    "partial": '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /> <path d="M12 8v4" /> <path d="M12 16h.01" /></svg>',
+    "success": (
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" '
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+        'stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 '
+        '1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /> '
+        '<path d="M9 18h6" /> <path d="M10 22h4" /></svg>'
+    ),
+    "failed": (
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" '
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+        'stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-'
+        '8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> '
+        '<path d="M12 9v4" /> <path d="M12 17h.01" /></svg>'
+    ),
+    "skipped": (
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" '
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+        'stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" /> '
+        '<line x1="19" x2="19" y1="5" y2="19" /></svg>'
+    ),
+    "partial": (
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" '
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+        'stroke-linejoin="round"><circle cx="12" cy="12" r="9" /> '
+        '<path d="M12 8v4" /> <path d="M12 16h.01" /></svg>'
+    ),
 }
 _HISTORY_STATUS_CLASS = {
     "success": "icon-avatar--sun",
@@ -112,7 +134,7 @@ def _history_action_label(action) -> str:
 
 
 def _history_group_label(d, today) -> str:
-    from datetime import date as date_type, timedelta
+    from datetime import timedelta
     if d == today:
         return f"Today — {d.strftime('%B %-d, %Y')}"
     if d == today - timedelta(days=1):
@@ -136,7 +158,7 @@ def _prepare_history(
 
     result = []
     for e in executions:
-        dt_utc = e.fired_at.replace(tzinfo=timezone.utc)
+        dt_utc = e.fired_at.replace(tzinfo=UTC)
         local_dt = dt_utc.astimezone(tz)
         hour = local_dt.hour
         time_str = f"{hour % 12 or 12}:{local_dt.minute:02d} {'PM' if hour >= 12 else 'AM'}"
@@ -264,9 +286,9 @@ def _resolve_display_tz(db: Session):
     same fallback behavior as the history fragment always used."""
     settings = db.get(Settings, 1)
     try:
-        return ZoneInfo(settings.timezone) if settings and settings.timezone else timezone.utc
+        return ZoneInfo(settings.timezone) if settings and settings.timezone else UTC
     except Exception:
-        return timezone.utc
+        return UTC
 
 
 def _format_uptime(delta: timedelta) -> str:
@@ -288,7 +310,7 @@ def _get_system_info(db: Session) -> dict:
     own version, host uptime, etc aren't available without mounting
     the Docker socket, a separate, unresolved constraint, not
     something to quietly work around here)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tz = _resolve_display_tz(db)
     return {
         "version": config.APP_VERSION,
@@ -300,12 +322,14 @@ def _get_system_info(db: Session) -> dict:
 @router.get("/settings")
 def settings_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
-        request, "settings.html", {
+        request,
+        "settings.html",
+        {
             "active_page": "settings",
             "network": _get_network_info(),
             "last_backup": _get_last_backup(),
             "system": _get_system_info(db),
-        }
+        },
     )
 
 
@@ -316,8 +340,14 @@ def schedules_page(
     schedules = _schedule_reads(db, device_id=device_id)
     devices = list(db.execute(select(Device).order_by(Device.name)).scalars())
     return templates.TemplateResponse(
-        request, "schedules.html",
-        {"active_page": "schedules", "schedules": schedules, "devices": devices, "device_id": device_id},
+        request,
+        "schedules.html",
+        {
+            "active_page": "schedules",
+            "schedules": schedules,
+            "devices": devices,
+            "device_id": device_id,
+        },
     )
 
 
@@ -398,7 +428,7 @@ def history_entries_fragment(
     db: Session = Depends(get_db),
 ):
     tz = _resolve_display_tz(db)
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     today = now_utc.astimezone(tz).date()
 
     rows = get_history_execution_rows(

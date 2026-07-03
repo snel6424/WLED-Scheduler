@@ -227,7 +227,9 @@ class ScheduleBase(BaseModel):
                 raise ValueError("time_of_day must not be set for sunrise/sunset triggers")
         if self.repeat_annually:
             if self.start_date is None or self.end_date is None:
-                raise ValueError("start_date and end_date are both required when repeat_annually is true")
+                raise ValueError(
+                    "start_date and end_date are both required when repeat_annually is true"
+                )
         elif self.start_date is not None and self.end_date is not None:
             if self.end_date < self.start_date:
                 raise ValueError("end_date must be the same as or after start_date")
