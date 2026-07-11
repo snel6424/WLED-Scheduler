@@ -17,7 +17,7 @@
 {# Alpine component owns the three toggle groups so x-show can replace
    the `hidden` attribute, which previously lost to `display: flex` on
    several of these elements via CSS specificity. #}
-<form id="schedule-form" x-data="scheduleFormVis">
+<form id="schedule-form" x-data="scheduleFormVis" @device-count-changed.document="deviceCount = $event.detail">
 
   {% from 'macros/icon_picker.html' import render as icon_picker %}
 
@@ -193,7 +193,7 @@
       <label for="action-preset">Saved preset</label>
     </div>
 
-    <div id="preset-field" class="input-row" x-show="actionMode === 'preset'" x-cloak>
+    <div id="preset-field" class="input-row" x-show="actionMode === 'preset' && deviceCount <= 1" x-cloak>
       <div class="input-row__icon">
         {{ picker_icon_svgs['lightbulb'] | safe }}
       </div>
@@ -202,6 +202,16 @@
         <select id="preset-select"></select>
         <p class="field__hint" id="preset-empty-state" hidden></p>
       </div>
+    </div>
+
+    {# Shown instead of the single dropdown above once more than one
+       device is linked: WLED preset numbers are per-device, so a
+       multi-device preset schedule needs one dropdown per device
+       rather than one shared value. #}
+    <div id="preset-per-device" class="field" x-show="actionMode === 'preset' && deviceCount > 1" x-cloak>
+      <label>Preset per device</label>
+      <div id="preset-per-device-rows"></div>
+      <p class="field__hint" id="preset-per-device-empty-state" hidden></p>
     </div>
 
     <div id="state-fields" x-show="actionMode !== 'preset'">
@@ -325,6 +335,7 @@ document.addEventListener('alpine:init', () => {
     triggerType: 'time',
     actionMode: 'state',
     onOff: 'on',
+    deviceCount: 0,
   }));
 });
 </script>

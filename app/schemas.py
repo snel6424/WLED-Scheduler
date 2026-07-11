@@ -12,7 +12,7 @@ instead of just living in a planning doc.
 """
 
 from datetime import date, datetime, time
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
 
@@ -162,6 +162,17 @@ class DeviceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ScheduleDeviceRead(DeviceSummary):
+    """DeviceSummary plus this schedule's effective preset for that
+    device. Only meaningful when the schedule's action is of type
+    preset; always None for state actions. See
+    app.view_helpers.effective_device_preset for how this value is
+    derived (the schedule_devices join row's override if set, else
+    the Action's own shared `ps`)."""
+
+    preset: int | None = None
+
+
 class PresetRead(BaseModel):
     """One entry from a device's live /presets.json, not cached."""
 
@@ -198,6 +209,9 @@ class SettingsUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+DevicePresetMap = dict[str, Annotated[int, Field(ge=0)]]
+
+
 class ScheduleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
@@ -212,6 +226,23 @@ class ScheduleBase(BaseModel):
     repeat_annually: bool = False
     enabled: bool = True
     icon: str | None = Field(None, max_length=50)
+    # device_id -> preset id. Only meaningful when the referenced action is
+    # of type preset; ignored for state actions. Required to cover every id
+    # in device_ids when more than one device is linked to a preset action;
+    # a single-device preset schedule may omit it and fall back to the
+    # Action's own shared `ps` (enforced in app.routers.schedules, not here,
+    # since that depends on the Action's type which this schema can't see).
+    device_presets: DevicePresetMap | None = None
+
+    @model_validator(mode="after")
+    def validate_device_presets(self) -> "ScheduleBase":
+        if self.device_presets is not None:
+            unknown = set(self.device_presets) - set(self.device_ids)
+            if unknown:
+                raise ValueError(
+                    f"device_presets references device_id(s) not in device_ids: {sorted(unknown)}"
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_trigger_fields(self) -> "ScheduleBase":
@@ -254,6 +285,12 @@ class ScheduleUpdate(BaseModel):
     end_date: date | None = None
     repeat_annually: bool | None = None
     icon: str | None = Field(None, max_length=50)
+    # Same shape and meaning as ScheduleBase.device_presets. Not run through
+    # merge_and_validate_schedule (it doesn't participate in the
+    # trigger-field cross-checks that function exists for); the router
+    # reads this straight off the request body and resolves it against
+    # whatever the schedule's final device list and action turn out to be.
+    device_presets: DevicePresetMap | None = None
     # Same reasoning as ActionUpdate: trigger_type/time_of_day/offset_minutes
     # consistency is checked in the router after merging with the existing
     # row, since a partial body doesn't carry enough information alone.
@@ -274,7 +311,7 @@ class ScheduleRead(BaseModel):
     next_run_at: datetime | None
     last_run_at: datetime | None
     icon: str | None
-    devices: list[DeviceSummary]
+    devices: list[ScheduleDeviceRead]
     action: ActionRead
 
     model_config = ConfigDict(from_attributes=True)

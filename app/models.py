@@ -90,6 +90,16 @@ def _enum_values(enum_cls):
 # that targeted it (which may leave a schedule with zero devices; the
 # scheduler loop skips firing such a schedule rather than deleting it
 # out from under the user).
+#
+# `preset` is only ever populated for schedules whose action is of
+# type preset; it stays NULL for state actions, which keep applying
+# the same Action payload to every linked device uniformly. It's read
+# and written directly through this Core table (not a mapped
+# association object) since nothing besides this per-pair override
+# needs identity/relationship semantics on the join row itself. See
+# app.view_helpers.effective_device_preset for how a NULL value here
+# (a schedule created or never re-saved before this column existed)
+# falls back to the Action's own shared `ps`.
 schedule_devices = Table(
     "schedule_devices",
     Base.metadata,
@@ -99,6 +109,7 @@ schedule_devices = Table(
     Column(
         "device_id", String(36), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
     ),
+    Column("preset", Integer, nullable=True),
 )
 
 

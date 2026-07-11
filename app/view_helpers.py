@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Device, Schedule, ScheduleExecution
+from app.models import Action, ActionType, Device, Schedule, ScheduleExecution, schedule_devices
 from app.schemas import DeviceRead, ScheduleRead
 
 
@@ -57,6 +57,77 @@ def get_device_reads(db: Session, sort: str = "name") -> list[DeviceRead]:
     return reads
 
 
+def load_schedule_device_presets(
+    db: Session, schedule_ids: list[str]
+) -> dict[str, dict[str, int | None]]:
+    """schedule_id -> {device_id: preset override}, straight off the
+    schedule_devices join table. Only preset-type actions ever have a
+    non-None entry here; see effective_device_preset for how a None
+    (never set, or a state action) gets resolved."""
+    if not schedule_ids:
+        return {}
+    rows = db.execute(
+        select(
+            schedule_devices.c.schedule_id,
+            schedule_devices.c.device_id,
+            schedule_devices.c.preset,
+        ).where(schedule_devices.c.schedule_id.in_(schedule_ids))
+    ).all()
+    result: dict[str, dict[str, int | None]] = {}
+    for row in rows:
+        result.setdefault(row.schedule_id, {})[row.device_id] = row.preset
+    return result
+
+
+def effective_device_preset(
+    action: Action, device_id: str, device_presets: dict[str, int | None]
+) -> int | None:
+    """The preset id that will actually be sent to `device_id` for this
+    (preset-type) action: the schedule_devices override if one was ever
+    saved for this pair, otherwise the Action's own shared `ps`. Always
+    None for a state action, since those apply the same payload to every
+    device uniformly rather than a preset at all."""
+    if action.type != ActionType.PRESET:
+        return None
+    stored = device_presets.get(device_id)
+    return stored if stored is not None else action.payload.get("ps")
+
+
+def schedule_to_read_dict(schedule: Schedule, device_presets: dict[str, int | None]) -> dict:
+    """Builds the dict ScheduleRead.model_validate expects, with each
+    device's effective preset resolved in (see effective_device_preset).
+    Schedule.devices is a plain list[Device] with no per-pair columns of
+    its own, so this can't just be `ScheduleRead.model_validate(schedule)`
+    directly the way it used to be."""
+    return {
+        "id": schedule.id,
+        "name": schedule.name,
+        "description": schedule.description,
+        "enabled": schedule.enabled,
+        "trigger_type": schedule.trigger_type,
+        "time_of_day": schedule.time_of_day,
+        "offset_minutes": schedule.offset_minutes,
+        "days_of_week": schedule.days_of_week,
+        "start_date": schedule.start_date,
+        "end_date": schedule.end_date,
+        "repeat_annually": schedule.repeat_annually,
+        "next_run_at": schedule.next_run_at,
+        "last_run_at": schedule.last_run_at,
+        "icon": schedule.icon,
+        "devices": [
+            {
+                "id": d.id,
+                "name": d.name,
+                "host": d.host,
+                "icon": d.icon,
+                "preset": effective_device_preset(schedule.action, d.id, device_presets),
+            }
+            for d in schedule.devices
+        ],
+        "action": schedule.action,
+    }
+
+
 def get_schedule_reads(
     db: Session, status_filter: str = "all", device_id: str | None = None
 ) -> list[ScheduleRead]:
@@ -70,7 +141,13 @@ def get_schedule_reads(
         stmt = stmt.where(Schedule.devices.any(Device.id == device_id))
 
     rows = list(db.execute(stmt).scalars())
-    reads = [ScheduleRead.model_validate(s) for s in rows]
+    presets_by_schedule = load_schedule_device_presets(db, [s.id for s in rows])
+    reads = [
+        ScheduleRead.model_validate(
+            schedule_to_read_dict(s, presets_by_schedule.get(s.id, {}))
+        )
+        for s in rows
+    ]
     if status_filter == "active":
         reads = [s for s in reads if s.enabled]
     elif status_filter == "inactive":

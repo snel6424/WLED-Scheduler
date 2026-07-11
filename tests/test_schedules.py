@@ -151,6 +151,7 @@ def test_create_schedule_with_multiple_devices(client, device, preset_action, co
         json={
             "name": "Dusk", "action_id": preset_action["id"],
             "device_ids": [device["id"], other_id],
+            "device_presets": {device["id"]: 5, other_id: 3},
             "trigger_type": "sunset", "offset_minutes": -10,
         },
     )
@@ -204,6 +205,37 @@ def test_update_schedule_changes_device_set(client, device, preset_action, confi
     assert [d["id"] for d in response.json()["devices"]] == [other_id]
 
 
+def test_update_schedule_expanding_to_multiple_devices_requires_device_presets(
+    client, device, preset_action, configured_settings
+):
+    """Growing a single-device preset schedule to target a second
+    device without an explicit per-device mapping should be rejected,
+    same as creating one that way, and shouldn't leave the schedule's
+    device set half-updated behind the 422."""
+    from tests.mock_wled import server as mock_wled
+
+    _, port = mock_wled.start()
+    other = client.post("/api/devices", json={"name": "Lamp", "host": f"127.0.0.1:{port}"})
+    other_id = other.json()["id"]
+
+    created = client.post(
+        "/api/schedules",
+        json={
+            "name": "Dusk", "device_ids": [device["id"]], "action_id": preset_action["id"],
+            "trigger_type": "sunset", "offset_minutes": -10,
+        },
+    )
+    schedule_id = created.json()["id"]
+
+    response = client.patch(
+        f"/api/schedules/{schedule_id}", json={"device_ids": [device["id"], other_id]}
+    )
+    assert response.status_code == 422
+
+    refetched = client.get(f"/api/schedules/{schedule_id}")
+    assert [d["id"] for d in refetched.json()["devices"]] == [device["id"]]
+
+
 def test_run_now_reports_partial_when_one_device_is_unreachable(
     client, db, device, preset_action, configured_settings
 ):
@@ -217,6 +249,7 @@ def test_run_now_reports_partial_when_one_device_is_unreachable(
         "/api/schedules",
         json={
             "name": "Dusk", "device_ids": [device["id"], bad_device.id],
+            "device_presets": {device["id"]: 5, bad_device.id: 5},
             "action_id": preset_action["id"], "trigger_type": "sunset", "offset_minutes": -10,
         },
     )
@@ -248,6 +281,7 @@ def test_device_delete_removes_it_from_schedule_without_deleting_schedule(
         json={
             "name": "Dusk", "action_id": preset_action["id"],
             "device_ids": [device["id"], other_id],
+            "device_presets": {device["id"]: 5, other_id: 3},
             "trigger_type": "sunset", "offset_minutes": -10,
         },
     )
@@ -258,3 +292,112 @@ def test_device_delete_removes_it_from_schedule_without_deleting_schedule(
     refetched = client.get(f"/api/schedules/{schedule_id}")
     assert refetched.status_code == 200
     assert [d["id"] for d in refetched.json()["devices"]] == [other_id]
+
+
+def test_create_multi_device_preset_schedule_requires_device_presets(
+    client, device, preset_action, configured_settings
+):
+    from tests.mock_wled import server as mock_wled
+
+    _, port = mock_wled.start()
+    other = client.post("/api/devices", json={"name": "Lamp", "host": f"127.0.0.1:{port}"})
+    other_id = other.json()["id"]
+
+    response = client.post(
+        "/api/schedules",
+        json={
+            "name": "Dusk", "action_id": preset_action["id"],
+            "device_ids": [device["id"], other_id],
+            "trigger_type": "sunset", "offset_minutes": -10,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_single_device_preset_schedule_falls_back_to_action_ps(
+    client, device, preset_action, configured_settings
+):
+    """The single-dropdown form never sends device_presets at all; the
+    join row should still end up reflecting the Action's own shared
+    `ps` so GET returns an effective preset, not a bare null."""
+    created = client.post(
+        "/api/schedules",
+        json={
+            "name": "Dusk", "device_ids": [device["id"]], "action_id": preset_action["id"],
+            "trigger_type": "sunset", "offset_minutes": -10,
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["devices"][0]["preset"] == 5  # preset_action's payload["ps"]
+
+
+def test_multi_device_preset_schedule_round_trips_per_device_presets(
+    client, device, preset_action, configured_settings
+):
+    from tests.mock_wled import server as mock_wled
+
+    _, port = mock_wled.start()
+    other = client.post("/api/devices", json={"name": "Lamp", "host": f"127.0.0.1:{port}"})
+    other_id = other.json()["id"]
+
+    created = client.post(
+        "/api/schedules",
+        json={
+            "name": "Dusk", "action_id": preset_action["id"],
+            "device_ids": [device["id"], other_id],
+            "device_presets": {device["id"]: 1, other_id: 9},
+            "trigger_type": "sunset", "offset_minutes": -10,
+        },
+    )
+    assert created.status_code == 201
+    presets_by_id = {d["id"]: d["preset"] for d in created.json()["devices"]}
+    assert presets_by_id == {device["id"]: 1, other_id: 9}
+
+    refetched = client.get(f"/api/schedules/{created.json()['id']}")
+    presets_by_id = {d["id"]: d["preset"] for d in refetched.json()["devices"]}
+    assert presets_by_id == {device["id"]: 1, other_id: 9}
+
+
+def test_run_now_sends_each_device_its_own_mapped_preset(
+    client, device, preset_action, configured_settings, monkeypatch
+):
+    """Regression guard for the actual dispatch logic: a preset-type,
+    multi-device schedule must apply each device's own mapped preset,
+    not the Action's single shared `ps` uniformly. Schedule.devices has
+    no defined iteration order (no order_by on that relationship), so
+    this records what was actually posted per host rather than
+    asserting anything about firing order."""
+    from app import wled_client
+    from tests.mock_wled import server as mock_wled
+
+    _, port = mock_wled.start()
+    other = client.post("/api/devices", json={"name": "Lamp", "host": f"127.0.0.1:{port}"})
+    other_id = other.json()["id"]
+    other_host = other.json()["host"]
+
+    created = client.post(
+        "/api/schedules",
+        json={
+            "name": "Dusk", "action_id": preset_action["id"],
+            "device_ids": [device["id"], other_id],
+            "device_presets": {device["id"]: 1, other_id: 9},
+            "trigger_type": "sunset", "offset_minutes": -10,
+        },
+    )
+    schedule_id = created.json()["id"]
+
+    sent_ps_by_host = {}
+    real_post_state = wled_client.post_state
+
+    def spying_post_state(host, payload, **kwargs):
+        sent_ps_by_host[host] = payload["ps"]
+        return real_post_state(host, payload, **kwargs)
+
+    monkeypatch.setattr("app.routers.schedules.wled_client.post_state", spying_post_state)
+
+    response = client.post(f"/api/schedules/{schedule_id}/run-now")
+    assert response.status_code == 200
+    assert response.json()["overall_status"] == "success"
+
+    assert sent_ps_by_host[device["host"]] == 1
+    assert sent_ps_by_host[other_host] == 9

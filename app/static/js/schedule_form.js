@@ -3,6 +3,11 @@
 
 let existingActionId = null;
 
+// Device names for the per-device preset rows' labels, keyed by id.
+// Populated by loadDevices(), which is the only place device data is
+// ever fetched in this form.
+let deviceNamesById = new Map();
+
 function setDayToggles(bitmask) {
   document.querySelectorAll("#day-toggles input").forEach((input) => {
     input.checked = !!(bitmask & (1 << Number(input.dataset.bit)));
@@ -75,32 +80,66 @@ function setRadio(name, value) {
 
 function updateActionModeVisibility() {
   const mode = document.querySelector('input[name="action_mode"]:checked').value;
-  // Alpine's x-show handles preset-field / state-fields visibility;
-  // this function's remaining job is to trigger preset-list loading.
+  // Alpine's x-show handles preset-field / preset-per-device / state-fields
+  // visibility; this function's remaining job is to trigger preset-list
+  // loading (single dropdown vs. one dropdown per device).
   if (mode === "preset") {
-    loadPresetsForSelectedDevice();
+    if (getSelectedDeviceIds().length > 1) {
+      loadPresetsPerDevice();
+    } else {
+      loadPresetsForSelectedDevice();
+    }
   } else {
     setPresetEmptyState("");
+    setPresetPerDeviceEmptyState("");
     updateSaveButtonState();
   }
 }
 
 // Devices are a checkbox-pill picker (#device-toggles), not a <select>,
-// since a schedule can now target more than one. Presets are still
-// loaded from a single device's /presets.json (WLED preset numbers are
-// per-device, there's no cross-device notion of "the same preset"), so
-// the preset dropdown always reflects whichever selected device is
-// first in the list.
+// since a schedule can now target more than one. Presets are always
+// loaded from each device's own /presets.json (WLED preset numbers are
+// per-device, there's no cross-device notion of "the same preset"): a
+// single dropdown when exactly one device is selected, one dropdown
+// per device (see loadPresetsPerDevice) once more than one is.
 function getSelectedDeviceIds() {
   return Array.from(document.querySelectorAll('#device-toggles input:checked')).map((i) => i.value);
 }
 
+// Alpine's x-show (not the fragile `hidden` attribute, see CLAUDE.md) owns
+// switching between the single preset dropdown and the per-device rows, but
+// that switch is driven by device selection count, which lives in plain
+// vanilla state (#device-toggles' checkboxes), not an Alpine-bound input.
+// This is the bridge: same document-event pattern the set-icon/set-color
+// hidden inputs elsewhere in this form use to reach into Alpine state.
+function syncDeviceCount() {
+  document.dispatchEvent(new CustomEvent("device-count-changed", { detail: getSelectedDeviceIds().length }));
+}
+
+function getDevicePresetsMap() {
+  const map = {};
+  document.querySelectorAll("#preset-per-device-rows [data-device-id]").forEach((row) => {
+    const select = row.querySelector("select");
+    if (select && select.value) map[row.dataset.deviceId] = Number(select.value);
+  });
+  return map;
+}
+
 function updateSaveButtonState() {
   const saveBtn = document.getElementById("save-btn");
-  const noDevicesSelected = getSelectedDeviceIds().length === 0;
+  const selectedIds = getSelectedDeviceIds();
+  const noDevicesSelected = selectedIds.length === 0;
   const presetMode = document.getElementById("action-preset").checked;
-  const presetDisabled = document.getElementById("preset-select").disabled;
-  saveBtn.disabled = noDevicesSelected || (presetMode && presetDisabled);
+  let presetInvalid = false;
+  if (presetMode) {
+    if (selectedIds.length > 1) {
+      const presets = getDevicePresetsMap();
+      presetInvalid = selectedIds.some((id) => !(id in presets));
+    } else {
+      presetInvalid = document.getElementById("preset-select").disabled;
+    }
+  }
+  saveBtn.disabled = noDevicesSelected || presetInvalid;
 }
 
 function updateRepeatAnnuallyVisibility() {
@@ -123,12 +162,21 @@ document.querySelectorAll('input[name="action_mode"]').forEach((r) =>
 document.getElementById("brightness").addEventListener("input", (event) => {
   document.getElementById("brightness-value").textContent = `${event.target.value}%`;
 });
-// Document-level delegation: #device-toggles' checkboxes are rebuilt
-// on every loadDevices() call, so a listener bound directly to them
-// wouldn't survive a reload.
-document.getElementById("device-toggles").addEventListener("change", () => {
+// Document-level delegation: both #device-toggles and
+// #preset-per-device-rows are rebuilt from scratch on every
+// loadDevices() / loadPresetsPerDevice() call, so a listener bound
+// directly to their children wouldn't survive a reload.
+document.getElementById("preset-per-device-rows").addEventListener("change", () => {
   updateSaveButtonState();
-  if (document.getElementById("action-preset").checked) loadPresetsForSelectedDevice();
+});
+
+document.getElementById("device-toggles").addEventListener("change", () => {
+  syncDeviceCount();
+  updateSaveButtonState();
+  if (document.getElementById("action-preset").checked) {
+    if (getSelectedDeviceIds().length > 1) loadPresetsPerDevice();
+    else loadPresetsForSelectedDevice();
+  }
 });
 
 async function loadSettings() {
@@ -152,6 +200,12 @@ function setPresetEmptyState(message) {
   hint.innerHTML = message || "";
 }
 
+function setPresetPerDeviceEmptyState(message) {
+  const hint = document.getElementById("preset-per-device-empty-state");
+  hint.hidden = !message;
+  hint.innerHTML = message || "";
+}
+
 async function loadDevices(selectedIds) {
   const devices = await apiGet("/api/devices");
   const container = document.getElementById("device-toggles");
@@ -166,11 +220,13 @@ async function loadDevices(selectedIds) {
     presetSelect.innerHTML = "";
     presetSelect.disabled = true;
     setPresetEmptyState("");
+    syncDeviceCount();
     updateSaveButtonState();
     return;
   }
 
   setDeviceEmptyState("");
+  deviceNamesById = new Map(devices.map((d) => [d.id, d.name]));
   container.innerHTML = devices
     .map((d) => {
       const icon = ICONS[d.icon] || ICONS.lightbulb;
@@ -182,6 +238,7 @@ async function loadDevices(selectedIds) {
   const presetSelect = document.getElementById("preset-select");
   presetSelect.disabled = false;
   setPresetEmptyState("");
+  syncDeviceCount();
   updateSaveButtonState();
 }
 
@@ -220,6 +277,70 @@ async function loadPresetsForSelectedDevice(selectedPresetId) {
   updateSaveButtonState();
 }
 
+// One dropdown per linked device, each scoped to that device's own
+// presets (fetched independently, since WLED preset numbers only mean
+// something per-device). selectedByDeviceId is {device_id: preset_id},
+// used when loading an existing schedule for editing.
+async function loadPresetsPerDevice(selectedByDeviceId) {
+  const deviceIds = getSelectedDeviceIds();
+  const container = document.getElementById("preset-per-device-rows");
+
+  if (deviceIds.length === 0) {
+    container.innerHTML = "";
+    setPresetPerDeviceEmptyState("Select at least one device.");
+    updateSaveButtonState();
+    return;
+  }
+  setPresetPerDeviceEmptyState("");
+
+  container.innerHTML = deviceIds
+    .map((deviceId) => {
+      const name = deviceNamesById.get(deviceId) || deviceId;
+      return `<div class="input-row" data-device-id="${deviceId}">` +
+        `<div class="input-row__body">` +
+        `<label>${escapeHtml(name)}</label>` +
+        `<select disabled><option>Loading…</option></select>` +
+        `</div></div>`;
+    })
+    .join("");
+
+  await Promise.all(
+    deviceIds.map(async (deviceId) => {
+      const row = container.querySelector(`[data-device-id="${deviceId}"]`);
+      const select = row.querySelector("select");
+      try {
+        const presets = await apiGet(`/api/devices/${deviceId}/presets`);
+        if (presets.length === 0) {
+          select.innerHTML = `<option value="">No saved presets</option>`;
+          select.disabled = true;
+        } else {
+          select.innerHTML = presets
+            .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+            .join("");
+          select.disabled = false;
+          const preselected = selectedByDeviceId?.[deviceId];
+          if (preselected != null) select.value = String(preselected);
+        }
+      } catch (err) {
+        select.innerHTML = `<option>${formatError(err)}</option>`;
+        select.disabled = true;
+      }
+      updateSaveButtonState();
+    })
+  );
+
+  const anyWithoutPresets = deviceIds.some((deviceId) => {
+    const select = container.querySelector(`[data-device-id="${deviceId}"] select`);
+    return select && select.disabled;
+  });
+  setPresetPerDeviceEmptyState(
+    anyWithoutPresets
+      ? 'One or more devices has no saved presets. Choose "Custom" or save a preset on that device first.'
+      : ""
+  );
+  updateSaveButtonState();
+}
+
 async function loadExistingSchedule() {
   const schedule = await apiGet(`/api/schedules/${SCHEDULE_ID}`);
 
@@ -243,7 +364,19 @@ async function loadExistingSchedule() {
 
   if (action.type === "preset") {
     setRadio("action_mode", "preset");
-    await loadPresetsForSelectedDevice(action.payload.ps);
+    if (schedule.devices.length > 1) {
+      // schedule.devices[*].preset is the API's already-resolved effective
+      // preset per device (the schedule_devices override if one was ever
+      // saved, else the Action's own shared `ps`), so this pre-fills every
+      // row even for a schedule that predates per-device mapping.
+      const selectedByDeviceId = {};
+      for (const d of schedule.devices) {
+        if (d.preset != null) selectedByDeviceId[d.id] = d.preset;
+      }
+      await loadPresetsPerDevice(selectedByDeviceId);
+    } else {
+      await loadPresetsForSelectedDevice(schedule.devices[0]?.preset ?? action.payload.ps);
+    }
   } else {
     setRadio("action_mode", "state");
     const on = action.payload.on !== false;
@@ -299,14 +432,33 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     let actionPayload;
 
     if (actionMode === "preset") {
-      const presetSelect = document.getElementById("preset-select");
-      const presetName = presetSelect.options[presetSelect.selectedIndex]?.text || null;
-      actionPayload = {
-        name: schedulePayload.name,
-        type: "preset",
-        payload: { ps: Number(presetSelect.value), n: presetName },
-        transition_ms: transitionMs,
-      };
+      if (schedulePayload.device_ids.length > 1) {
+        // The Action itself stays device-agnostic (schedule_devices is the
+        // real source of truth for which preset each device gets); ps here
+        // is just a representative value carried on the Action record,
+        // taken from the first linked device since PresetPayload requires
+        // some value. `n` (the friendly preset name) doesn't get one clean
+        // answer across devices with different presets, so it's left unset
+        // rather than guessing.
+        const devicePresets = getDevicePresetsMap();
+        schedulePayload.device_presets = devicePresets;
+        const representativePs = devicePresets[schedulePayload.device_ids[0]];
+        actionPayload = {
+          name: schedulePayload.name,
+          type: "preset",
+          payload: { ps: representativePs },
+          transition_ms: transitionMs,
+        };
+      } else {
+        const presetSelect = document.getElementById("preset-select");
+        const presetName = presetSelect.options[presetSelect.selectedIndex]?.text || null;
+        actionPayload = {
+          name: schedulePayload.name,
+          type: "preset",
+          payload: { ps: Number(presetSelect.value), n: presetName },
+          transition_ms: transitionMs,
+        };
+      }
     } else {
       const on = document.querySelector('input[name="on_off"]:checked').value === "on";
       const payload = { on };
@@ -369,28 +521,41 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
       }
 
       const actionMode = document.querySelector('input[name="action_mode"]:checked').value;
-      let payload;
+      let payloadForDevice;
 
       if (actionMode === "preset") {
-        const presetId = document.getElementById("preset-select").value;
-        const presetNum = Number(presetId);
-        if (!presetId || isNaN(presetNum) || presetNum < 1) {
-          toast("Select a preset first", { error: true });
-          return;
+        if (deviceIds.length > 1) {
+          // Per-device presets, same mapping the per-device dropdowns feed
+          // into the schedule on save.
+          const devicePresets = getDevicePresetsMap();
+          const missing = deviceIds.filter((id) => !(id in devicePresets));
+          if (missing.length > 0) {
+            toast("Select a preset for every device first", { error: true });
+            return;
+          }
+          payloadForDevice = (id) => ({ ps: devicePresets[id] });
+        } else {
+          const presetId = document.getElementById("preset-select").value;
+          const presetNum = Number(presetId);
+          if (!presetId || isNaN(presetNum) || presetNum < 1) {
+            toast("Select a preset first", { error: true });
+            return;
+          }
+          payloadForDevice = () => ({ ps: presetNum });
         }
-        payload = { ps: presetNum };
       } else {
         const on = document.querySelector('input[name="on_off"]:checked').value === "on";
-        payload = { on };
+        const payload = { on };
         if (on) {
           payload.bri = percentToBri(Number(document.getElementById("brightness").value));
           payload.seg = [{ col: [hexToRgb(document.getElementById("color").value)], fx: 0 }];
         }
+        payloadForDevice = () => payload;
       }
 
       const results = await Promise.all(
         deviceIds.map((id) =>
-          apiPost(`/api/devices/${id}/apply`, { payload }).then(
+          apiPost(`/api/devices/${id}/apply`, { payload: payloadForDevice(id) }).then(
             (r) => ({ status: r.status === "success" ? "success" : "failed", error_message: r.error_message }),
             (err) => ({ status: "failed", error_message: formatError(err) })
           )
