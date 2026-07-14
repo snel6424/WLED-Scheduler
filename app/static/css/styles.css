@@ -434,6 +434,15 @@ select:disabled {
 .field-row > .field {
   flex: 1;
 }
+/* Two side-by-side fields (e.g. IP address + name) get too narrow to
+   hold their own placeholder/label text on a phone-width screen —
+   stack them instead of squeezing both into half the viewport. */
+@media (max-width: 480px) {
+  .field-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
 
 fieldset {
   border: 1px solid var(--border);
@@ -855,6 +864,30 @@ input[type="number"] {
   vertical-align: -0.15em;
 }
 
+/* ---------- Device detail header ---------- */
+
+/* The avatar + name/room block: a device name is user-entered text of
+   unpredictable length, unlike static page titles, so the generic h1
+   (2rem/800) reliably wraps to two lines on a phone-width screen and,
+   centered against a 64px avatar, leaves a large lopsided gap beside
+   the first line. clamp() keeps long names legible without wrapping
+   awkwardly, and top-aligning the avatar reads correctly whether the
+   name wraps or not. */
+.device-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.device-detail-header__name {
+  font-size: clamp(1.3rem, 6.5vw, 2rem);
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+.device-detail-header__avatar {
+  margin-top: 2px;
+}
+
 /* ---------- Form header (Create/Edit Schedule) ---------- */
 
 .form-header {
@@ -999,6 +1032,18 @@ input[type="number"] {
   height: 24px;
   flex-shrink: 0;
   cursor: pointer;
+}
+
+/* A standalone row that happens to sit directly next to another
+   .input-row in the DOM, with no detail/edit panel between them (e.g.
+   two simple link rows in a row), would otherwise match the
+   "connected rows" rules above and render as one fused pill with
+   sheared-off touching corners plus a stray border. Forces it back to
+   an independent, fully-rounded row; spacing between rows comes from
+   the parent .list's gap, same as the Devices and Schedules lists. */
+.input-row--standalone {
+  border-radius: var(--radius) !important;
+  border-top: none !important;
 }
 
 /* ── Icon picker ─────────────────────────────────────────────────── */
