@@ -28,10 +28,10 @@ from sqlalchemy.orm import Session
 
 from app import config, wled_client
 from app.database import SessionLocal
-from app.models import ActionType, ExecutionStatus, Schedule, ScheduleExecution, Settings, utcnow
+from app.models import ExecutionStatus, Schedule, ScheduleExecution, Settings, utcnow
 from app.scheduling import compute_next_run_at
 from app.sun import LocationNotConfigured
-from app.view_helpers import effective_device_preset, load_schedule_device_presets
+from app.view_helpers import load_schedule_device_presets, resolve_device_payload
 from app.wled_client import WledClientError
 
 logger = logging.getLogger("app.scheduler")
@@ -57,9 +57,7 @@ def _fire(db: Session, schedule: Schedule) -> None:
     device_results = []
     any_success = False
     for device in schedule.devices:
-        payload = action.payload
-        if action.type == ActionType.PRESET:
-            payload = {**payload, "ps": effective_device_preset(action, device.id, device_presets)}
+        payload = resolve_device_payload(action, device.id, action.payload, device_presets)
         try:
             wled_client.post_state(device.host, payload, transition_ms=action.transition_ms)
         except WledClientError as exc:

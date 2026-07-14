@@ -93,39 +93,31 @@ def effective_device_preset(
     return stored if stored is not None else action.payload.get("ps")
 
 
-def schedule_to_read_dict(schedule: Schedule, device_presets: dict[str, int | None]) -> dict:
-    """Builds the dict ScheduleRead.model_validate expects, with each
-    device's effective preset resolved in (see effective_device_preset).
-    Schedule.devices is a plain list[Device] with no per-pair columns of
-    its own, so this can't just be `ScheduleRead.model_validate(schedule)`
-    directly the way it used to be."""
-    return {
-        "id": schedule.id,
-        "name": schedule.name,
-        "description": schedule.description,
-        "enabled": schedule.enabled,
-        "trigger_type": schedule.trigger_type,
-        "time_of_day": schedule.time_of_day,
-        "offset_minutes": schedule.offset_minutes,
-        "days_of_week": schedule.days_of_week,
-        "start_date": schedule.start_date,
-        "end_date": schedule.end_date,
-        "repeat_annually": schedule.repeat_annually,
-        "next_run_at": schedule.next_run_at,
-        "last_run_at": schedule.last_run_at,
-        "icon": schedule.icon,
-        "devices": [
-            {
-                "id": d.id,
-                "name": d.name,
-                "host": d.host,
-                "icon": d.icon,
-                "preset": effective_device_preset(schedule.action, d.id, device_presets),
-            }
-            for d in schedule.devices
-        ],
-        "action": schedule.action,
-    }
+def resolve_device_payload(
+    action: Action, device_id: str, payload: dict, device_presets: dict[str, int | None]
+) -> dict:
+    """The actual JSON body to POST to `device_id` for this action firing:
+    `payload` as-is for a state action, or `payload` with `ps` swapped for
+    this device's effective preset (see effective_device_preset) for a
+    preset action. Shared by the scheduler's own firing loop and the
+    API's run-now endpoint so the two dispatch paths can't drift apart."""
+    if action.type != ActionType.PRESET:
+        return payload
+    return {**payload, "ps": effective_device_preset(action, device_id, device_presets)}
+
+
+def schedule_to_read_dict(schedule: Schedule, device_presets: dict[str, int | None]) -> ScheduleRead:
+    """ScheduleRead for `schedule`, with each device's effective preset
+    resolved in (see effective_device_preset). schedule_devices' preset
+    override isn't a column on Device itself, so ScheduleDeviceRead's
+    `preset` can't come along for free via plain from_attributes
+    validation; it's patched in afterward instead."""
+    read = ScheduleRead.model_validate(schedule)
+    devices = [
+        d.model_copy(update={"preset": effective_device_preset(schedule.action, d.id, device_presets)})
+        for d in read.devices
+    ]
+    return read.model_copy(update={"devices": devices})
 
 
 def get_schedule_reads(
@@ -142,12 +134,7 @@ def get_schedule_reads(
 
     rows = list(db.execute(stmt).scalars())
     presets_by_schedule = load_schedule_device_presets(db, [s.id for s in rows])
-    reads = [
-        ScheduleRead.model_validate(
-            schedule_to_read_dict(s, presets_by_schedule.get(s.id, {}))
-        )
-        for s in rows
-    ]
+    reads = [schedule_to_read_dict(s, presets_by_schedule.get(s.id, {})) for s in rows]
     if status_filter == "active":
         reads = [s for s in reads if s.enabled]
     elif status_filter == "inactive":

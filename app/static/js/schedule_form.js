@@ -78,13 +78,17 @@ function setRadio(name, value) {
   radio.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function isMultiDevice(deviceIds) {
+  return deviceIds.length > 1;
+}
+
 function updateActionModeVisibility() {
   const mode = document.querySelector('input[name="action_mode"]:checked').value;
   // Alpine's x-show handles preset-field / preset-per-device / state-fields
   // visibility; this function's remaining job is to trigger preset-list
   // loading (single dropdown vs. one dropdown per device).
   if (mode === "preset") {
-    if (getSelectedDeviceIds().length > 1) {
+    if (isMultiDevice(getSelectedDeviceIds())) {
       loadPresetsPerDevice();
     } else {
       loadPresetsForSelectedDevice();
@@ -132,7 +136,7 @@ function updateSaveButtonState() {
   const presetMode = document.getElementById("action-preset").checked;
   let presetInvalid = false;
   if (presetMode) {
-    if (selectedIds.length > 1) {
+    if (isMultiDevice(selectedIds)) {
       const presets = getDevicePresetsMap();
       presetInvalid = selectedIds.some((id) => !(id in presets));
     } else {
@@ -174,7 +178,7 @@ document.getElementById("device-toggles").addEventListener("change", () => {
   syncDeviceCount();
   updateSaveButtonState();
   if (document.getElementById("action-preset").checked) {
-    if (getSelectedDeviceIds().length > 1) loadPresetsPerDevice();
+    if (isMultiDevice(getSelectedDeviceIds())) loadPresetsPerDevice();
     else loadPresetsForSelectedDevice();
   }
 });
@@ -242,6 +246,22 @@ async function loadDevices(selectedIds) {
   updateSaveButtonState();
 }
 
+// Fills `select` with <option>s for `presets`, preselecting
+// `preselectedId` if given. Returns false (and leaves the select
+// disabled with a placeholder option) when there are no presets to
+// show, so callers can surface their own empty-state hint.
+function populatePresetOptions(select, presets, preselectedId) {
+  if (presets.length === 0) {
+    select.innerHTML = `<option value="">No saved presets</option>`;
+    select.disabled = true;
+    return false;
+  }
+  select.innerHTML = presets.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+  select.disabled = false;
+  if (preselectedId != null) select.value = String(preselectedId);
+  return true;
+}
+
 async function loadPresetsForSelectedDevice(selectedPresetId) {
   // Presets are per-device on WLED itself; when several devices are
   // selected, the dropdown reflects whichever one is first.
@@ -258,17 +278,12 @@ async function loadPresetsForSelectedDevice(selectedPresetId) {
   select.innerHTML = "<option>Loading…</option>";
   try {
     const presets = await apiGet(`/api/devices/${deviceId}/presets`);
-    if (presets.length === 0) {
-      select.innerHTML = `<option value="">No saved presets</option>`;
-      select.disabled = true;
-      setPresetEmptyState(
-        'This device has no saved presets. Choose "Custom" or save a preset on the device first.'
-      );
-    } else {
-      select.innerHTML = presets.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
-      if (selectedPresetId != null) select.value = String(selectedPresetId);
-      setPresetEmptyState("");
-    }
+    const hasPresets = populatePresetOptions(select, presets, selectedPresetId);
+    setPresetEmptyState(
+      hasPresets
+        ? ""
+        : 'This device has no saved presets. Choose "Custom" or save a preset on the device first.'
+    );
   } catch (err) {
     select.innerHTML = `<option>${formatError(err)}</option>`;
     select.disabled = true;
@@ -310,17 +325,7 @@ async function loadPresetsPerDevice(selectedByDeviceId) {
       const select = row.querySelector("select");
       try {
         const presets = await apiGet(`/api/devices/${deviceId}/presets`);
-        if (presets.length === 0) {
-          select.innerHTML = `<option value="">No saved presets</option>`;
-          select.disabled = true;
-        } else {
-          select.innerHTML = presets
-            .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-            .join("");
-          select.disabled = false;
-          const preselected = selectedByDeviceId?.[deviceId];
-          if (preselected != null) select.value = String(preselected);
-        }
+        populatePresetOptions(select, presets, selectedByDeviceId?.[deviceId]);
       } catch (err) {
         select.innerHTML = `<option>${formatError(err)}</option>`;
         select.disabled = true;
@@ -432,7 +437,7 @@ document.getElementById("schedule-form").addEventListener("submit", async (event
     let actionPayload;
 
     if (actionMode === "preset") {
-      if (schedulePayload.device_ids.length > 1) {
+      if (isMultiDevice(schedulePayload.device_ids)) {
         // The Action itself stays device-agnostic (schedule_devices is the
         // real source of truth for which preset each device gets); ps here
         // is just a representative value carried on the Action record,
@@ -524,7 +529,7 @@ document.getElementById("run-now-btn").addEventListener("click", async () => {
       let payloadForDevice;
 
       if (actionMode === "preset") {
-        if (deviceIds.length > 1) {
+        if (isMultiDevice(deviceIds)) {
           // Per-device presets, same mapping the per-device dropdowns feed
           // into the schedule on save.
           const devicePresets = getDevicePresetsMap();

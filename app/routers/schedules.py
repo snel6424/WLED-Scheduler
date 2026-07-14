@@ -40,9 +40,9 @@ from app.sun import LocationNotConfigured
 from app.validation import merge_and_validate_schedule
 from app.view_helpers import (
     build_device_results,
-    effective_device_preset,
     load_devices_by_id,
     load_schedule_device_presets,
+    resolve_device_payload,
     schedule_to_read_dict,
 )
 from app.wled_client import WledClientError
@@ -128,7 +128,7 @@ def _write_device_presets(db: Session, schedule_id: str, presets: dict[str, int 
 
 def _schedule_response(db: Session, schedule: Schedule) -> ScheduleRead:
     presets = load_schedule_device_presets(db, [schedule.id]).get(schedule.id, {})
-    return ScheduleRead.model_validate(schedule_to_read_dict(schedule, presets))
+    return schedule_to_read_dict(schedule, presets)
 
 
 def _execution_response(db: Session, execution: ScheduleExecution) -> dict:
@@ -205,10 +205,7 @@ def list_schedules(
         stmt = stmt.where(Schedule.devices.any(Device.id == device_id))
     schedules = list(db.execute(stmt).scalars())
     presets_by_schedule = load_schedule_device_presets(db, [s.id for s in schedules])
-    return [
-        ScheduleRead.model_validate(schedule_to_read_dict(s, presets_by_schedule.get(s.id, {})))
-        for s in schedules
-    ]
+    return [schedule_to_read_dict(s, presets_by_schedule.get(s.id, {})) for s in schedules]
 
 
 @router.get("/{schedule_id}", response_model=ScheduleRead)
@@ -291,9 +288,7 @@ def run_now(schedule_id: str, db: Session = Depends(get_db)) -> dict:
     device_results = []
     any_success = False
     for device in schedule.devices:
-        device_payload = payload
-        if action.type == ActionType.PRESET:
-            device_payload = {**payload, "ps": effective_device_preset(action, device.id, device_presets)}
+        device_payload = resolve_device_payload(action, device.id, payload, device_presets)
         try:
             wled_client.post_state(device.host, device_payload, transition_ms=action.transition_ms)
         except WledClientError as exc:
