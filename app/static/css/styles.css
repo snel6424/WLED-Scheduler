@@ -30,6 +30,8 @@
   --backdrop: rgba(0, 0, 0, 0.55); /* modal overlay */
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.4); /* modal shadow */
   --accent-glow: rgba(56, 139, 253, 0.7); /* FAB starburst glow */
+  --amber-glow: rgba(210, 153, 34, 0.55);  /* device avatar glow, powered on */
+  --moon-glow: rgba(163, 113, 247, 0.45);  /* device avatar glow, powered off */
 
   /* Type: one consistent rounded system sans, no monospace */
   --font-body: -apple-system, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
@@ -79,6 +81,8 @@
   --backdrop: rgba(27, 31, 36, 0.3);
   --shadow-modal: 0 8px 32px rgba(27, 31, 36, 0.2);
   --accent-glow: rgba(9, 105, 218, 0.4);
+  --amber-glow: rgba(154, 103, 0, 0.35);
+  --moon-glow: rgba(130, 80, 223, 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -97,6 +101,14 @@ html,
 body {
   margin: 0;
   padding: 0;
+  /* Without this, iOS Safari's rubber-band bounce at the top/bottom of
+     the page drags the whole visual viewport along with it — and
+     since a `position: fixed` element is anchored to that viewport,
+     the tab bar visually detaches during the bounce: it dips down, or
+     a gap opens beneath it, depending on scroll direction. Disabling
+     the bounce on the outer page removes the effect entirely, rather
+     than trying to chase it with fixed-element hacks. */
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -174,6 +186,23 @@ svg {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  /* 100dvh (the live, currently-visible viewport) sounds like the
+     right fix for a toolbar that shows/hides, but it's actually
+     counterproductive here: it makes .app's own box height
+     recalculate on every frame of the toolbar's show/hide animation,
+     and since .tabbar is `position: sticky` inside .app, that live
+     resize is what was still causing a gap specifically during the
+     animation (worst at the top of the page, pulling up, where the
+     toolbar-reveal gesture is most sustained). 100svh is the
+     "smallest possible" viewport size — i.e. sized as if the toolbar
+     were always shown — so .app's height stays constant through the
+     whole animation and nothing has to reflow while it plays. The
+     trade-off is a sliver of unused space below the tab bar when the
+     toolbar happens to be hidden, which is a much smaller problem
+     than a jittering nav bar. Declared second, as a progressive
+     enhancement — browsers that don't recognize svh ignore the line
+     and keep the 100vh fallback above. */
+  min-height: 100svh;
 }
 
 .main {
@@ -183,13 +212,22 @@ svg {
   margin: 0 auto;
   padding: var(--space-5) var(--space-4);
   /* Leaves room for the fixed tab bar so content never sits behind
-     it. Was previously a static var(--space-8) guess, which was 16px
-     short of the tab bar's actual rendered height on at least one
-     real page; --tabbar-height is measured in JS instead. */
+     it. --tabbar-height is measured in JS (page-init.js) rather than
+     guessed here, since a static guess previously ended up 16px short
+     of the bar's actual rendered height on at least one real page. */
   padding-bottom: calc(var(--tabbar-height) + var(--space-4) + env(safe-area-inset-bottom, 0px));
 }
 
 .tabbar {
+  /* `sticky` was tried here to dodge a Firefox-for-Android quirk
+     where `fixed` lags the dynamic toolbar's show/hide animation —
+     but sticky is inherently scroll-coupled (it has to track scroll
+     position to decide whether to pin), so it visibly moves during
+     ordinary scrolling too, which reads as worse than the animation
+     glitch it was meant to fix. Back to `fixed` for a bar that's
+     truly stationary; overscroll-behavior-y: none and 100svh (above)
+     still do most of the work reducing the toolbar-animation jitter,
+     independent of which positioning scheme is used here. */
   position: fixed;
   bottom: 0;
   left: 0;
@@ -198,6 +236,12 @@ svg {
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Promotes the bar to its own compositing layer so mobile browsers
+     can reposition it during scroll without repainting it against the
+     rest of the page — without this it can lag a frame or two behind
+     fast scroll/momentum, which reads as the bar "trying to move with
+     the scroll". */
+  transform: translateZ(0);
 }
 
 .tabbar__link {
@@ -821,6 +865,52 @@ input[type="number"] {
   background: var(--surface-raised);
 }
 
+/* ---------- Pull-to-refresh ---------- */
+
+/* Setting overscroll-behavior-y: none earlier (to stop the tab bar
+   jitter) also suppresses the browser's own native pull-to-refresh
+   gesture, so this replaces it with an explicit one. Positioned/sized
+   entirely by pull-to-refresh.js (transform + class toggles); this
+   just defines what it looks like at rest. */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin-top: -48px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-strong);
+  z-index: 150;
+  opacity: 0;
+  pointer-events: none;
+}
+.ptr-indicator.is-visible {
+  opacity: 1;
+}
+.ptr-indicator svg {
+  width: 20px;
+  height: 20px;
+}
+.ptr-indicator__icon {
+  display: flex;
+  transition: transform 0.15s ease-out;
+}
+.ptr-indicator.is-loading .ptr-indicator__icon {
+  animation: ptr-spin 0.7s linear infinite;
+}
+@keyframes ptr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ---------- Toasts ---------- */
 
 .toast-region {
@@ -864,28 +954,424 @@ input[type="number"] {
   vertical-align: -0.15em;
 }
 
-/* ---------- Device detail header ---------- */
+/* ---------- Device detail (glassmorphism redesign) ---------- */
 
-/* The avatar + name/room block: a device name is user-entered text of
-   unpredictable length, unlike static page titles, so the generic h1
-   (2rem/800) reliably wraps to two lines on a phone-width screen and,
-   centered against a 64px avatar, leaves a large lopsided gap beside
-   the first line. clamp() keeps long names legible without wrapping
-   awkwardly, and top-aligning the avatar reads correctly whether the
-   name wraps or not. */
-.device-detail-header {
+/* Avatar: a device name is user-entered text of unpredictable length,
+   unlike static page titles, so the generic h1 (2rem/800) reliably
+   wraps to two lines on a phone-width screen; clamp() keeps long
+   names legible without an awkward wrap next to a fixed-size avatar.
+   The glow/tint is tied to on/off + reachability, the closest proxy
+   to "current WLED state" available without caching the device's
+   live RGB color (capabilities only cache firmware/LED count/signal,
+   refreshed on add/manual refresh, not a live color feed). */
+.device-header {
+  margin-bottom: var(--space-5);
+  transition: opacity 0.2s;
+}
+.device-header__top {
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
-  margin-bottom: var(--space-5);
 }
-.device-detail-header__name {
-  font-size: clamp(1.3rem, 6.5vw, 2rem);
+.device-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+  will-change: auto;
+}
+.device-avatar--on {
+  background: var(--amber-deep);
+  color: var(--amber);
+  box-shadow: 0 0 0 1px var(--border), 0 0 32px var(--amber-glow);
+}
+.device-avatar--off {
+  background: var(--moon-bg);
+  color: var(--moon-fg);
+  box-shadow: 0 0 0 1px var(--border), 0 0 22px var(--moon-glow);
+}
+.device-avatar--offline {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  box-shadow: none;
+  opacity: 0.65;
+}
+.device-header__identity {
+  flex: 1;
+  min-width: 0;
+}
+.device-header__name {
+  font-size: clamp(1.3rem, 6.5vw, 1.9rem);
   line-height: 1.15;
+  margin: 2px 0 8px;
+}
+.device-header__name-input {
+  font: inherit;
+  font-size: clamp(1.2rem, 6vw, 1.7rem);
+  font-weight: 800;
+  width: 100%;
+  background: none;
+  color: var(--text);
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  padding: 0 0 4px;
+  margin: 2px 0 10px;
+}
+.device-header__name-input:focus {
+  outline: none;
+}
+.device-header__room-input {
+  width: auto;
+  font-size: 0.85rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+}
+.device-header__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.icon-btn--accent {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+
+/* Room/area chip beneath the name; becomes a text field in edit mode
+   via .device-header__room-input above, swapped by JS rather than
+   CSS since the two need different underlying markup (span vs input). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+}
+.chip__icon {
+  display: flex;
+  color: var(--accent-strong);
+}
+.chip__icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Status chips row: quick-glance state and signal, each a pill with
+   an icon badge + label/sublabel pair. Solid var(--surface), matching
+   the card/row treatment used everywhere else in the app (Settings,
+   the schedule form), not a one-off translucent look for this page. */
+.status-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.status-chip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.status-chip__icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.status-chip__icon svg {
+  width: 15px;
+  height: 15px;
+}
+.status-chip__icon--accent {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-dot--online {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+.status-dot--offline {
+  background: var(--danger);
+}
+.status-chip__body {
+  min-width: 0;
+}
+.status-chip__label,
+.status-chip__sub {
+  white-space: nowrap;
+  overflow: hidden;
+}
+.status-chip__label {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.status-chip__sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* Scrolling text: used instead of a hard ellipsis cutoff for the
+   status/signal label+sublabel, which routinely overflow a
+   half-width chip ("Connected and responsive"). device_detail.js
+   only wraps text in .marquee__track and duplicates it (for a
+   seamless loop) when it actually overflows the chip — short text
+   like "Online" stays static, nothing to gain by scrolling it. */
+.marquee__track {
+  display: inline-block;
+  white-space: nowrap;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.is-scrolling .marquee__track {
+  animation: marquee-scroll 6s linear infinite;
+  will-change: transform;
+}
+.marquee__gap {
+  display: inline-block;
+  width: 1.5rem;
+}
+@keyframes marquee-scroll {
+  0%, 12% {
+    transform: translateX(0);
+  }
+  88%, 100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Sections: Device Information / Automation / Danger Zone. Solid
+   var(--surface), the same card treatment used on every other page
+   (Settings, Devices, the schedule form) rather than a one-off look
+   for this page. */
+.glass-section {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  transition: opacity 0.2s;
+}
+.glass-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.glass-section__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.glass-section__icon svg {
+  width: 16px;
+  height: 16px;
+}
+.glass-section__icon--danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+.glass-section__header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+/* Device Information: 2x2 tile grid, read-only (device-reported
+   data), no numbering — distinct from the editable header above. */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.info-tile {
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.info-tile__icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+.info-tile__icon svg {
+  width: 15px;
+  height: 15px;
+}
+.info-tile__icon--accent {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+}
+.info-tile__icon--warning {
+  background: var(--amber-wash);
+  color: var(--amber);
+}
+.info-tile__icon--muted {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+.info-tile__label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
   margin-bottom: 2px;
 }
-.device-detail-header__avatar {
-  margin-top: 2px;
+.info-tile__value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+/* Automation: tappable rows (Schedules, Activity History), same
+   solid-surface treatment as .input-row elsewhere in the app. */
+.glass-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.glass-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--surface-raised);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  color: inherit;
+}
+.glass-row__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.glass-row__icon svg {
+  width: 18px;
+  height: 18px;
+}
+.glass-row__body {
+  flex: 1;
+  min-width: 0;
+}
+.glass-row__title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.glass-row__sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.glass-row__chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Danger Zone: red-tinted, visually separate from the sections above
+   — the same --danger-wash tint used by .badge--danger and the
+   offline info-card elsewhere, not a one-off color. Delete is
+   filled/heavy since it's the only destructive-weight action on the
+   page — everything else here is read-only or editable in place. */
+.danger-zone {
+  background: var(--danger-wash);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  transition: opacity 0.2s, filter 0.2s;
+}
+.danger-zone__hint {
+  font-size: 0.85rem;
+  margin: 0 0 var(--space-4);
+}
+.danger-zone__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.danger-zone__actions .btn {
+  flex: 1;
+}
+.btn--danger-filled {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  width: 100%;
+}
+.btn--danger-filled:hover {
+  opacity: 0.88;
+}
+
+/* Edit mode: header fields become editable; everything below dims to
+   keep focus there, per the redesign spec. */
+#page-sections.is-dimmed {
+  opacity: 0.4;
+  filter: saturate(0.5);
+  pointer-events: none;
 }
 
 /* ---------- Form header (Create/Edit Schedule) ---------- */

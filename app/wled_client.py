@@ -83,3 +83,18 @@ def post_state(
     if transition_ms is not None:
         body["tt"] = round(transition_ms / 100)
     return _request("POST", host, "/json/state", json=body)
+
+
+def restart_device(host: str) -> None:
+    """Reboots the physical device via WLED's documented `rb` state
+    flag. The device drops off the network immediately, so the HTTP
+    connection itself is expected to fail/reset rather than return a
+    clean response -- that's treated as success, not an error, same
+    as WLED's own web UI does for its reboot button. Callers should
+    still check the device is known-online first (see mdns.is_online):
+    this alone can't tell "rebooted mid-response" apart from "was
+    never reachable to begin with"."""
+    try:
+        _request("POST", host, "/json/state", json={"rb": True})
+    except WledClientError:
+        pass

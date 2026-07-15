@@ -169,6 +169,17 @@ def get_device_presets(device_id: str, db: Session = Depends(get_db)) -> list[di
         ) from exc
 
 
+@router.post("/{device_id}/restart", status_code=204)
+def restart_device(device_id: str, db: Session = Depends(get_db)) -> None:
+    device = _get_device_or_404(db, device_id)
+    if not mdns.is_online(device.id):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{device.name!r} appears offline, so it can't be sent a restart command.",
+        )
+    wled_client.restart_device(device.host)
+
+
 @router.delete("/{device_id}", status_code=204)
 def delete_device(device_id: str, db: Session = Depends(get_db)) -> None:
     device = _get_device_or_404(db, device_id)

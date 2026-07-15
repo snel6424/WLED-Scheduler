@@ -12,115 +12,147 @@
   </a>
 </div>
 
-<div class="device-detail-header">
-  {% call icon_picker('device-icon-picker') %}
-    <button type="button"
-            class="icon-avatar icon-avatar--moon icon-avatar--editable device-detail-header__avatar"
-            id="device-icon"
-            style="width:64px; height:64px;"
-            @click="pending = icon; open = true"
-            title="Change icon"
-            x-effect="icon && ($el.innerHTML = _deviceGlyph(icon, 28))">
-      {{ picker_icon_svgs['lightbulb'] | safe }}
-    </button>
-  {% endcall %}
-  <div style="min-width: 0;">
-    <h1 id="device-name" class="device-detail-header__name">&nbsp;</h1>
-    <div class="muted" id="device-room" style="font-size: 0.9rem;"></div>
+<div x-data="deviceDetailData()" x-init="init()">
+  <div class="device-header">
+    <div class="device-header__top">
+      {% call icon_picker('device-icon-picker') %}
+        <button type="button"
+                class="device-avatar"
+                :class="!device ? 'device-avatar--off' : !device.online ? 'device-avatar--offline' : device.powered_on ? 'device-avatar--on' : 'device-avatar--off'"
+                @click="pending = icon; open = true"
+                title="Change icon"
+                x-effect="$el.innerHTML = _deviceGlyph(icon, 30)">
+          {{ picker_icon_svgs['lightbulb'] | safe }}
+        </button>
+      {% endcall %}
+
+      <div class="device-header__identity">
+        <h1 x-show="!editing" class="device-header__name" x-text="device ? device.name : ' '"></h1>
+        <input type="text" x-show="editing" x-cloak x-ref="editNameInput" x-model="editName"
+               class="device-header__name-input" placeholder="Device name">
+
+        <span class="chip chip--room" x-show="!editing">
+          <span class="chip__icon">{{ picker_icon_svgs['pin'] | safe }}</span>
+          <span x-text="device && device.room ? device.room : 'No room set'">—</span>
+        </span>
+        <input type="text" x-show="editing" x-cloak x-model="editRoom"
+               class="device-header__room-input" placeholder="Room (optional), e.g. Backyard">
+      </div>
+
+      <div class="device-header__actions">
+        <button type="button" x-show="!editing" @click="startEdit()" class="icon-btn" title="Edit device" aria-label="Edit device">
+          {{ picker_icon_svgs['pencil'] | safe }}
+        </button>
+        <button type="button" x-show="editing" x-cloak @click="save()" class="icon-btn icon-btn--accent" title="Save changes" aria-label="Save changes">
+          {{ picker_icon_svgs['check'] | safe }}
+        </button>
+        <button type="button" x-show="editing" x-cloak @click="cancelEdit()" class="icon-btn" title="Cancel" aria-label="Cancel">
+          {{ picker_icon_svgs['x'] | safe }}
+        </button>
+      </div>
+    </div>
+
+    <div class="status-chips">
+      <div class="status-chip">
+        <span class="status-chip__icon">
+          <span class="status-dot" :class="device && device.online ? 'status-dot--online' : 'status-dot--offline'"></span>
+        </span>
+        <div class="status-chip__body">
+          <div class="status-chip__label" x-effect="setScrollableText($el, device ? (device.online ? 'Online' : 'Offline') : '—')">—</div>
+          <div class="status-chip__sub" x-effect="setScrollableText($el, statusDetail())"></div>
+        </div>
+      </div>
+      <div class="status-chip">
+        <span class="status-chip__icon status-chip__icon--accent">{{ picker_icon_svgs['signal'] | safe }}</span>
+        <div class="status-chip__body">
+          <div class="status-chip__label" x-effect="setScrollableText($el, signal().label)">—</div>
+          <div class="status-chip__sub" x-effect="setScrollableText($el, signal().sub)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-sections" :class="{ 'is-dimmed': editing }">
+    <section class="glass-section">
+      <div class="glass-section__header">
+        <span class="glass-section__icon">{{ picker_icon_svgs['info'] | safe }}</span>
+        <h2>Device Information</h2>
+      </div>
+      <div class="info-grid">
+        <div class="info-tile">
+          <span class="info-tile__icon info-tile__icon--accent">{{ picker_icon_svgs['cpu'] | safe }}</span>
+          <div class="info-tile__label">Firmware</div>
+          <div class="info-tile__value" x-text="(device && device.capabilities && device.capabilities.version) || 'Unknown'">—</div>
+        </div>
+        <div class="info-tile">
+          <span class="info-tile__icon info-tile__icon--warning">{{ picker_icon_svgs['zap'] | safe }}</span>
+          <div class="info-tile__label">LEDs</div>
+          <div class="info-tile__value" x-text="(device && device.capabilities && device.capabilities.led_count) ?? 'Unknown'">—</div>
+        </div>
+        <div class="info-tile">
+          <span class="info-tile__icon info-tile__icon--accent">{{ picker_icon_svgs['wifi'] | safe }}</span>
+          <div class="info-tile__label">IP Address</div>
+          <div class="info-tile__value" x-text="device ? device.host : '—'">—</div>
+        </div>
+        <div class="info-tile">
+          <span class="info-tile__icon info-tile__icon--muted">{{ picker_icon_svgs['hash'] | safe }}</span>
+          <div class="info-tile__label">MAC Address</div>
+          <div class="info-tile__value" x-text="(device && device.mac) || 'Unknown'">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass-section">
+      <div class="glass-section__header">
+        <span class="glass-section__icon">{{ picker_icon_svgs['calendar'] | safe }}</span>
+        <h2>Automation</h2>
+      </div>
+      <div class="glass-list">
+        <a href="/schedules?device_id={{ device_id }}" class="glass-row">
+          <span class="glass-row__icon">{{ picker_icon_svgs['calendar'] | safe }}</span>
+          <div class="glass-row__body">
+            <div class="glass-row__title">Schedules</div>
+            <div class="glass-row__sub"
+                 x-text="schedulesCount === null ? '—' : `${schedulesCount} schedule${schedulesCount === 1 ? '' : 's'}`">—</div>
+          </div>
+          <span class="glass-row__chevron">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </span>
+        </a>
+        <a href="/history?device_id={{ device_id }}" class="glass-row">
+          <span class="glass-row__icon">{{ picker_icon_svgs['history'] | safe }}</span>
+          <div class="glass-row__body">
+            <div class="glass-row__title">Activity History</div>
+            <div class="glass-row__sub">View past actions for this device</div>
+          </div>
+          <span class="glass-row__chevron">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </span>
+        </a>
+      </div>
+    </section>
+
+    <section class="danger-zone">
+      <div class="glass-section__header">
+        <span class="glass-section__icon glass-section__icon--danger">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></svg>
+        </span>
+        <h2>Danger Zone</h2>
+      </div>
+      <p class="danger-zone__hint">Restarting reboots the physical device; deleting also removes it from any schedules that target it.</p>
+      <div class="danger-zone__actions">
+        <button type="button" class="btn" @click="restart()" :disabled="restarting">
+          {{ picker_icon_svgs['loader'] | safe }}
+          Restart Device
+        </button>
+        <button type="button" class="btn btn--danger-filled" @click="remove()">
+          {{ picker_icon_svgs['trash'] | safe }}
+          Delete Device
+        </button>
+      </div>
+    </section>
   </div>
 </div>
-
-<div class="card" style="display:flex; margin-bottom: 1.5rem;">
-  <div style="flex:1;">
-    <div class="row__meta">Status</div>
-    <div id="device-status" style="font-weight:700; margin: 2px 0;">—</div>
-    <div class="muted" id="device-status-detail" style="font-size: 0.8rem;"></div>
-  </div>
-  <div style="flex:1;">
-    <div class="row__meta">Signal</div>
-    <div id="device-signal" style="font-weight:700; margin: 2px 0;">—</div>
-  </div>
-</div>
-
-<div class="list" style="gap: var(--space-2); margin-bottom: 1.5rem;">
-  <button type="button" class="input-row" id="device-info-toggle" style="width:100%; text-align:left; cursor:pointer; border:none;">
-    <div class="input-row__icon">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
-    </div>
-    <div class="input-row__body">
-      <label style="margin-bottom:0;">Device Information</label>
-      <div class="muted" style="font-size:0.85rem;">Model, firmware, and capabilities</div>
-    </div>
-    <span class="input-row__chevron" id="device-info-chevron">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-    </span>
-  </button>
-  <div id="device-info-detail" class="card" hidden></div>
-
-  <button type="button" class="input-row" id="edit-name-row" style="width:100%; text-align:left; cursor:pointer; border:none;">
-    <div class="input-row__icon">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-    </div>
-    <div class="input-row__body">
-      <label style="margin-bottom:0;">Device Name &amp; Room</label>
-      <div class="muted" style="font-size:0.85rem;" id="edit-row-subtitle"></div>
-    </div>
-    <span class="input-row__chevron">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-    </span>
-  </button>
-  <div id="edit-card" class="card" hidden>
-    <h2>Edit device</h2>
-    <div class="field">
-      <label for="edit-name">Name</label>
-      <input type="text" id="edit-name">
-    </div>
-    <div class="field">
-      <label for="edit-room">Room</label>
-      <input type="text" id="edit-room" placeholder="e.g. Backyard">
-    </div>
-    <div style="display: flex; gap: 0.75rem; justify-content: space-between;">
-      <button class="btn btn--primary" id="save-edit-btn">Save</button>
-      <button class="btn" id="cancel-edit-btn" type="button">Cancel</button>
-    </div>
-  </div>
-
-  <a href="#" id="schedules-row" class="input-row input-row--standalone" style="text-decoration:none; color:inherit;">
-    <div class="input-row__icon">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-    </div>
-    <div class="input-row__body">
-      <label style="margin-bottom:0;">Schedules</label>
-      <div class="muted" style="font-size:0.85rem;" id="schedules-count">—</div>
-    </div>
-    <span class="input-row__chevron">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-    </span>
-  </a>
-
-  <a href="#" id="history-row" class="input-row input-row--standalone" style="text-decoration:none; color:inherit;">
-    <div class="input-row__icon">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg>
-    </div>
-    <div class="input-row__body">
-      <label style="margin-bottom:0;">Activity History</label>
-      <div class="muted" style="font-size:0.85rem;">View past actions for this device</div>
-    </div>
-    <span class="input-row__chevron">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-    </span>
-  </a>
-</div>
-
-<button type="button" class="input-row btn--danger" id="remove-device-btn" style="width:100%; text-align:left; cursor:pointer; border:none; background: var(--danger-wash);">
-  <div class="input-row__icon" style="background: none; color: var(--danger);">
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
-  </div>
-  <div class="input-row__body">
-    <label style="margin-bottom:0; color: var(--danger);">Remove Device</label>
-    <div class="muted" style="font-size:0.85rem;">Remove this device and its schedules</div>
-  </div>
-</button>
 {% endblock %}
 
 {% block scripts %}

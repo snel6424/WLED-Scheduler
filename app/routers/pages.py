@@ -124,8 +124,15 @@ _HISTORY_STATUS_COLOR = {
 _PAGE_SIZE = 20
 
 
-def _history_action_label(action) -> str:
+def _history_action_label(action, device_count: int = 1) -> str:
     if action.type.value == "preset":
+        # WLED preset numbers are per-device, so once more than one device
+        # was targeted the Action's own `ps`/`n` is just a representative
+        # value from the first device (see schedule_form.js), not something
+        # every targeted device actually used — "Preset #1" would misstate
+        # what really happened.
+        if device_count > 1:
+            return "Multiple Presets"
         n = action.payload.get("n")
         return n if n else f"Preset #{action.payload.get('ps', '?')}"
     if action.payload.get("on") is False:
@@ -163,7 +170,7 @@ def _prepare_history(
         hour = local_dt.hour
         time_str = f"{hour % 12 or 12}:{local_dt.minute:02d} {'PM' if hour >= 12 else 'AM'}"
 
-        action_str = _history_action_label(e.schedule.action)
+        action_str = _history_action_label(e.schedule.action, len(e.device_results))
         overall = e.overall_status
         sched_icon = PICKER_ICON_SVGS.get(e.schedule.icon) if e.schedule.icon else None
 

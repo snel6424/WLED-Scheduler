@@ -114,97 +114,88 @@ async function init() {
   tzEl.dataset.lastSaved = tzEl.value;
   tzEl.addEventListener("change", () => saveField(tzEl, "timezone"));
 
-  const catchUpToggle = document.getElementById("catch-up-toggle");
-  catchUpToggle.checked = settings.catch_up_missed;
-  catchUpToggle.addEventListener("change", async () => {
-    const checked = catchUpToggle.checked;
-    catchUpToggle.disabled = true;
-    try {
-      await apiPatch("/api/settings", { catch_up_missed: checked });
-      toast(checked ? "Catch-up turned on" : "Catch-up turned off");
-    } catch (err) {
-      catchUpToggle.checked = !checked;
-      toast(formatError(err), { error: true });
-    } finally {
-      catchUpToggle.disabled = false;
-    }
-  });
+  // Bridges the fetched settings to the catch-up toggle's own Alpine
+  // component, same document-event pattern as the icon picker's `set-icon`.
+  document.dispatchEvent(new CustomEvent("settings-loaded", { detail: settings }));
 }
 
 init().catch((err) => toast(formatError(err), { error: true }));
 
-// Update checker
-(function () {
-  const btn = document.getElementById("check-update-btn");
-  const statusEl = document.getElementById("update-status");
-  const actionEl = document.getElementById("update-action");
-  if (!btn) return;
+function catchUpToggleData() {
+  return {
+    catchUp: false,
+    saving: false,
 
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    statusEl.textContent = "Checking…";
-    actionEl.hidden = true;
-    actionEl.innerHTML = "";
+    async save(checked) {
+      this.saving = true;
+      try {
+        await apiPatch("/api/settings", { catch_up_missed: checked });
+        this.catchUp = checked;
+        toast(checked ? "Catch-up turned on" : "Catch-up turned off");
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      } finally {
+        this.saving = false;
+      }
+    },
+  };
+}
 
-    let result;
-    try {
-      result = await apiGet("/api/update/check");
-    } catch {
-      statusEl.textContent = "Couldn't check for updates — are you connected to the internet?";
-      btn.disabled = false;
-      return;
-    }
+function updateCheckerData() {
+  return {
+    checking: false,
+    applying: false,
+    applied: false,
+    result: null,
+    statusText: "",
 
-    if (!result.update_available) {
-      statusEl.textContent = `You're up to date (v${result.current_version}).`;
-      btn.disabled = false;
-      return;
-    }
+    async check() {
+      this.checking = true;
+      this.applied = false;
+      this.result = null;
+      this.statusText = "Checking…";
+      try {
+        this.result = await apiGet("/api/update/check");
+      } catch {
+        this.statusText = "Couldn't check for updates — are you connected to the internet?";
+        this.checking = false;
+        return;
+      }
+      this.statusText = this.result.update_available
+        ? `v${this.result.latest_version} is available (you have v${this.result.current_version}).`
+        : `You're up to date (v${this.result.current_version}).`;
+      this.checking = false;
+    },
 
-    // An update is available.
-    statusEl.textContent = `v${result.latest_version} is available (you have v${result.current_version}).`;
-
-    if (!result.can_apply_automatically) {
-      // Docker / generic install — show the manual command.
-      actionEl.innerHTML =
-        `<p class="field__hint" style="margin:0;">To update, run:</p>` +
-        `<pre style="margin:0.5rem 0 0; background:var(--surface-raised); border:1px solid var(--border); border-radius:var(--radius-sm); padding:0.6rem 0.75rem; font-size:0.82rem; overflow-x:auto; white-space:pre-wrap; word-break:break-all;">git pull && docker compose up --build -d</pre>`;
-      actionEl.hidden = false;
-    } else {
-      // Pi native install — offer the one-click button.
-      const updateBtn = document.createElement("button");
-      updateBtn.type = "button";
-      updateBtn.className = "btn btn--primary";
-      updateBtn.textContent = "Update now";
-      updateBtn.addEventListener("click", async () => {
-        if (!confirm("Update WLED Scheduler now?\n\nThe app will be briefly unavailable while it updates. Check back in about a minute.")) return;
-        updateBtn.disabled = true;
-        try {
-          await apiPost("/api/update/apply");
-          actionEl.innerHTML =
-            `<p class="field__hint" style="margin:0; color:var(--success);">Update started. The app will be briefly unavailable — check back in about a minute.</p>`;
-        } catch (err) {
-          toast(formatError(err), { error: true });
-          updateBtn.disabled = false;
-        }
-      });
-      actionEl.appendChild(updateBtn);
-      actionEl.hidden = false;
-    }
-
-    btn.disabled = false;
-  });
-})();
+    async apply() {
+      if (!confirm("Update WLED Scheduler now?\n\nThe app will be briefly unavailable while it updates. Check back in about a minute.")) return;
+      this.applying = true;
+      try {
+        await apiPost("/api/update/apply");
+        this.applied = true;
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      } finally {
+        this.applying = false;
+      }
+    },
+  };
+}
 
 // Theme toggle — persisted in localStorage, not the Settings table (per-browser preference)
-const themeToggle = document.getElementById("theme-toggle");
-themeToggle.checked = localStorage.getItem("theme") !== "light";
-themeToggle.addEventListener("change", () => {
-  if (themeToggle.checked) {
-    delete document.documentElement.dataset.theme;
-    localStorage.removeItem("theme");
-  } else {
-    document.documentElement.dataset.theme = "light";
-    localStorage.setItem("theme", "light");
-  }
-});
+function themeToggleData() {
+  return {
+    dark: localStorage.getItem("theme") !== "light",
+
+    toggle(checked) {
+      this.dark = checked;
+      if (checked) {
+        delete document.documentElement.dataset.theme;
+        localStorage.removeItem("theme");
+      } else {
+        document.documentElement.dataset.theme = "light";
+        localStorage.setItem("theme", "light");
+      }
+    },
+  };
+}

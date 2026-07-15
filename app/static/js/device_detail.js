@@ -1,11 +1,53 @@
 // DEVICE_ID is injected by device_detail.html
 
-function signalLabel(percent) {
-  if (percent == null) return "—";
-  if (percent >= 80) return `Excellent (${percent}%)`;
-  if (percent >= 60) return `Good (${percent}%)`;
-  if (percent >= 40) return `Fair (${percent}%)`;
-  return `Weak (${percent}%)`;
+function relativeTime(isoUtc) {
+  const then = new Date(isoUtc + "Z").getTime();
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function signalParts(percent) {
+  if (percent == null) return { label: "—", sub: "No signal data" };
+  let label;
+  if (percent >= 80) label = "Excellent";
+  else if (percent >= 60) label = "Good";
+  else if (percent >= 40) label = "Fair";
+  else label = "Weak";
+  return { label, sub: `${percent}% signal` };
+}
+
+// Sets el's text and, only if it actually overflows el's box, wraps
+// it in a duplicated, animated track so it scrolls into view instead
+// of being cut off — short text (e.g. "Online") is left static since
+// there's nothing to gain from scrolling it. Re-checked on every
+// render (status polling can change which strings overflow). Called
+// from x-effect since the wrap needs real DOM measurement, not just
+// a text binding.
+function setScrollableText(el, text) {
+  el.classList.remove("is-scrolling");
+  el.textContent = text;
+  requestAnimationFrame(() => {
+    if (el.scrollWidth > el.clientWidth) {
+      el.innerHTML = "";
+      const track = document.createElement("span");
+      track.className = "marquee__track";
+      const first = document.createElement("span");
+      first.textContent = text;
+      const gap = document.createElement("span");
+      gap.className = "marquee__gap";
+      const second = document.createElement("span");
+      second.textContent = text;
+      track.append(first, gap, second);
+      el.appendChild(track);
+      el.classList.add("is-scrolling");
+    }
+  });
 }
 
 function _deviceGlyph(iconKey, size) {
@@ -17,104 +59,95 @@ function _deviceGlyph(iconKey, size) {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.4.3.6.8.6 1.3v.3h5.8v-.3c0-.5.2-1 .6-1.3A6 6 0 0 0 12 3Z"/></svg>`;
 }
 
-function renderDeviceInfo(device) {
-  document.getElementById("device-name").textContent = device.name;
-  document.getElementById("device-room").textContent = device.room || "No room set";
+// Alpine component backing the whole device detail page. Registered as a
+// global factory (rather than inlined in x-data) because of the amount of
+// state and async logic involved — see device_detail.html for the markup.
+function deviceDetailData() {
+  return {
+    device: null,
+    schedulesCount: null,
+    editing: false,
+    editName: "",
+    editRoom: "",
+    restarting: false,
 
-  const icon = document.getElementById("device-icon");
-  icon.classList.remove("icon-avatar--sun", "icon-avatar--moon");
-  icon.classList.add(device.online && device.powered_on ? "icon-avatar--sun" : "icon-avatar--moon");
-  icon.innerHTML = _deviceGlyph(device.icon, 28);
+    async init() {
+      this.device = await apiGet(`/api/devices/${DEVICE_ID}`);
+      document.dispatchEvent(new CustomEvent("set-icon", { detail: this.device.icon ?? null }));
 
-  document.dispatchEvent(new CustomEvent("set-icon", { detail: device.icon ?? null }));
+      document.addEventListener("icon-picker-confirmed", (e) => {
+        this.setIcon((e.detail && e.detail.icon) ?? null);
+      });
 
-  const statusEl = document.getElementById("device-status");
-  const detailEl = document.getElementById("device-status-detail");
-  statusEl.textContent = device.online ? "Online" : "Offline";
-  statusEl.style.color = device.online ? "var(--success)" : "var(--danger)";
-  detailEl.textContent = device.online
-    ? "Connected and responsive"
-    : device.last_seen_at
-      ? `Last seen ${new Date(device.last_seen_at + "Z").toLocaleString()}`
-      : "Never reached";
+      const schedules = await apiGet(`/api/schedules?device_id=${DEVICE_ID}`);
+      this.schedulesCount = schedules.length;
+    },
 
-  const caps = device.capabilities || {};
-  document.getElementById("device-signal").textContent = signalLabel(caps.wifi_signal_percent);
+    statusDetail() {
+      if (!this.device) return "";
+      if (this.device.online) return "Connected";
+      return this.device.last_seen_at ? `Last seen ${relativeTime(this.device.last_seen_at)}` : "Never reached";
+    },
 
-  document.getElementById("device-info-detail").innerHTML = `
-    <div class="row__meta">Firmware</div>
-    <div style="margin-bottom: 0.75rem;">${escapeHtml(caps.version || "Unknown")}</div>
-    <div class="row__meta">LEDs</div>
-    <div style="margin-bottom: 0.75rem;">${caps.led_count ?? "Unknown"}</div>
-    <div class="row__meta">Host</div>
-    <div style="margin-bottom: 0.75rem;">${escapeHtml(device.host)}</div>
-    <div class="row__meta">MAC address</div>
-    <div>${escapeHtml(device.mac || "Unknown")}</div>
-  `;
+    signal() {
+      const caps = (this.device && this.device.capabilities) || {};
+      return signalParts(caps.wifi_signal_percent);
+    },
 
-  document.getElementById("edit-name").value = device.name;
-  document.getElementById("edit-room").value = device.room || "";
-  document.getElementById("edit-row-subtitle").textContent = device.room
-    ? `${device.name} · ${device.room}`
-    : device.name;
+    startEdit() {
+      this.editName = this.device.name;
+      this.editRoom = this.device.room || "";
+      this.editing = true;
+      this.$nextTick(() => this.$refs.editNameInput.focus());
+    },
+
+    cancelEdit() {
+      this.editing = false;
+    },
+
+    async save() {
+      try {
+        this.device = await apiPatch(`/api/devices/${DEVICE_ID}`, {
+          name: this.editName.trim(),
+          room: this.editRoom.trim() || null,
+        });
+        this.editing = false;
+        toast("Device updated");
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      }
+    },
+
+    async setIcon(icon) {
+      try {
+        this.device = await apiPatch(`/api/devices/${DEVICE_ID}`, { icon });
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      }
+    },
+
+    async restart() {
+      if (!confirm("Restart this device? It will briefly go offline while it reboots.")) return;
+      this.restarting = true;
+      try {
+        await apiPost(`/api/devices/${DEVICE_ID}/restart`);
+        toast("Restart command sent");
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      } finally {
+        this.restarting = false;
+      }
+    },
+
+    async remove() {
+      if (!confirm("Remove this device? Any schedules that target it will be deleted too.")) return;
+      try {
+        await apiDelete(`/api/devices/${DEVICE_ID}`);
+        toast("Device removed");
+        location.href = "/devices";
+      } catch (err) {
+        toast(formatError(err), { error: true });
+      }
+    },
+  };
 }
-
-document.getElementById("device-info-toggle").addEventListener("click", () => {
-  const detail = document.getElementById("device-info-detail");
-  detail.hidden = !detail.hidden;
-});
-
-document.getElementById("edit-name-row").addEventListener("click", () => {
-  document.getElementById("edit-card").hidden = false;
-});
-document.getElementById("cancel-edit-btn").addEventListener("click", () => {
-  document.getElementById("edit-card").hidden = true;
-});
-
-document.addEventListener("icon-picker-confirmed", async (e) => {
-  try {
-    const icon = (e.detail && e.detail.icon) ?? null;
-    const device = await apiPatch(`/api/devices/${DEVICE_ID}`, { icon });
-    renderDeviceInfo(device);
-  } catch (err) {
-    toast(formatError(err), { error: true });
-  }
-});
-
-document.getElementById("save-edit-btn").addEventListener("click", async () => {
-  const name = document.getElementById("edit-name").value.trim();
-  const room = document.getElementById("edit-room").value.trim() || null;
-  try {
-    const device = await apiPatch(`/api/devices/${DEVICE_ID}`, { name, room });
-    renderDeviceInfo(device);
-    document.getElementById("edit-card").hidden = true;
-    toast("Device updated");
-  } catch (err) {
-    toast(formatError(err), { error: true });
-  }
-});
-
-document.getElementById("remove-device-btn").addEventListener("click", async () => {
-  if (!confirm("Remove this device? Any schedules that target it will be deleted too.")) return;
-  try {
-    await apiDelete(`/api/devices/${DEVICE_ID}`);
-    toast("Device removed");
-    location.href = "/devices";
-  } catch (err) {
-    toast(formatError(err), { error: true });
-  }
-});
-
-async function init() {
-  const device = await apiGet(`/api/devices/${DEVICE_ID}`);
-  renderDeviceInfo(device);
-
-  document.getElementById("schedules-row").href = `/schedules?device_id=${DEVICE_ID}`;
-  document.getElementById("history-row").href = `/history?device_id=${DEVICE_ID}`;
-
-  const schedules = await apiGet(`/api/schedules?device_id=${DEVICE_ID}`);
-  document.getElementById("schedules-count").textContent =
-    `${schedules.length} schedule${schedules.length === 1 ? "" : "s"}`;
-}
-
-init().catch((err) => toast(formatError(err), { error: true }));
