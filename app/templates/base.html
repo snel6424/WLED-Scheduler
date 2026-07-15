@@ -41,20 +41,20 @@
     </nav>
   </div>
   <div class="toast-region" id="toast-region"></div>
-  <div id="delete-confirm-backdrop" class="confirm-backdrop" hidden>
+  <confirm-dialog class="confirm-backdrop" hidden>
     <div class="confirm-dialog">
-      <h3 class="confirm-dialog__title">Delete "<span id="delete-confirm-item-name"></span>"?</h3>
+      <h3 class="confirm-dialog__title">Delete "<span class="confirm-dialog__item-name"></span>"?</h3>
       <p class="confirm-dialog__body">This can't be undone.</p>
       <label class="confirm-dialog__no-ask">
-        <input type="checkbox" id="delete-confirm-no-ask">
+        <input type="checkbox" class="confirm-dialog__no-ask-input">
         Don't ask again
       </label>
       <div class="confirm-dialog__actions">
-        <button type="button" id="delete-confirm-cancel" class="btn">Cancel</button>
-        <button type="button" id="delete-confirm-ok" class="btn btn--danger">Delete</button>
+        <button type="button" class="btn confirm-dialog__cancel-btn">Cancel</button>
+        <button type="button" class="btn btn--danger confirm-dialog__ok-btn">Delete</button>
       </div>
     </div>
-  </div>
+  </confirm-dialog>
   {% block scripts %}{% endblock %}
 </body>
 </html>

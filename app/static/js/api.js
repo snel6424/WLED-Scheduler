@@ -48,40 +48,31 @@ function toast(message, { error = false } = {}) {
   setTimeout(() => el.remove(), 5000);
 }
 
-/** Converts a UTC ISO datetime string to a 0-100 position on the
- * 24-hour day bar, in the given IANA timezone. Used identically for
- * every trigger type, since next_run_at is always a concrete instant
- * regardless of how it was triggered. */
-function dayBarPosition(isoUtc, timezone) {
-  const date = new Date(isoUtc.endsWith("Z") ? isoUtc : isoUtc + "Z");
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone || "UTC",
-    hour: "numeric",
-    minute: "numeric",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const hour = Number(parts.find((p) => p.type === "hour").value);
-  const minute = Number(parts.find((p) => p.type === "minute").value);
-  return ((hour * 60 + minute) / 1440) * 100;
-}
+/** A toast with a single action button (e.g. "Undo"), dismissed either by
+ * the timeout or by the action firing, whichever comes first. */
+function toastWithAction(message, actionLabel, onAction, { timeout = 6000 } = {}) {
+  const region = document.getElementById("toast-region");
+  if (!region) return;
+  const el = document.createElement("div");
+  el.className = "toast";
 
-/** Renders a day-bar element (the signature gradient + marker) given
- * a next_run_at ISO string and timezone. Returns an HTML string. */
-function renderDayBar(isoUtc, timezone, label) {
-  if (!isoUtc) {
-    return '<div class="day-bar"></div><div class="day-bar__label"><span>Not yet scheduled</span></div>';
-  }
-  const pct = dayBarPosition(isoUtc, timezone);
-  const localTime = new Date(isoUtc.endsWith("Z") ? isoUtc : isoUtc + "Z").toLocaleString("en-US", {
-    timeZone: timezone || "UTC",
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "toast__action";
+  btn.textContent = actionLabel;
+
+  const timer = setTimeout(() => el.remove(), timeout);
+  btn.addEventListener("click", () => {
+    clearTimeout(timer);
+    el.remove();
+    onAction();
   });
-  return (
-    `<div class="day-bar"><div class="day-bar__marker" style="left:${pct}%"></div></div>` +
-    `<div class="day-bar__label"><span>${label || "Next run"}</span><span>${localTime}</span></div>`
-  );
+
+  el.append(text, btn);
+  region.appendChild(el);
 }
 
 function formatError(err) {

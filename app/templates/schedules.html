@@ -60,7 +60,7 @@
           hx-include="#device-filter">Sunrise / Sunset</button>
 </div>
 
-<div class="list" id="schedule-list" style="gap: var(--space-2);">
+<delete-list class="list" id="schedule-list" style="gap: var(--space-2);">
   {# Initial server-side render. The fragment at /fragments/schedules/list
      returns the same row markup for filter swaps, so the two places must
      stay in sync if the row structure changes. #}
@@ -74,7 +74,7 @@
   {{ schedule_row(schedule, picker_icon_svgs, format_days_of_week, format_time_of_day, format_sun_offset) }}
   {% endfor %}
   {% endif %}
-</div>
+</delete-list>
 
 <div class="info-card">
   <div class="info-card__icon">

@@ -1,179 +1,220 @@
 /**
- * iOS-style long-press delete mode, shared between Devices and Schedules.
+ * iOS-style long-press delete mode, as two web components shared between
+ * Devices and Schedules: <confirm-dialog> (the "Delete X?" prompt, one
+ * singleton instance in base.html) and <delete-list> (wraps a row list,
+ * used in place of a plain <div> for #device-list / #schedule-list).
  *
- * Call LongPressDelete.attach(listEl, opts) once per list:
- *   opts.deleteItem(id)   async, calls the delete API
- *   opts.afterDelete()    optional, called after the row is removed
- *   opts.getLabel(row)    optional, returns the dialog item name
+ * Both are native custom elements specifically because htmx's boosted
+ * navigation replaces the whole <body> (see CLAUDE.md: a <script> tag
+ * delivered that way never re-executes, so page-specific JS like
+ * devices.js only ever runs once, at the original hard load), which
+ * destroys and recreates every element in it on every tab switch. A
+ * plain <div> plus manually-bound listeners loses those listeners on
+ * that swap; connectedCallback is the platform's own hook for "this
+ * element (re)entered the DOM," so a custom element rebinds itself for
+ * free every time, with no registry or re-attach bookkeeping needed.
  *
- * This file lives in <head> and executes exactly once. Event delegation is
- * used for the confirm dialog so listeners survive htmx body swaps. A
- * registry re-attaches list bindings after every htmx:afterSettle so
- * boost-navigating away and back works without a hard refresh.
+ * <delete-list> still needs its per-list opts (deleteItem/afterDelete/
+ * getLabel callbacks) to survive that same swap, and those can only be
+ * supplied by devices.js/schedules.js's own one-time run. `configure()`
+ * stashes them in the module-level registry below, keyed by element id,
+ * so the *next* <delete-list> instance with that id (post-swap) can
+ * still find them in its own connectedCallback.
  */
 (function () {
   'use strict';
 
   var LONG_PRESS_MS = 500;
-  var SKIP_KEY = 'wled-delete-skip-confirm';
   var MOVE_PX = 8;
+  var SKIP_KEY = 'wled-delete-skip-confirm';
 
-  var activeList = null;
-  var pressTimer = null;
-  var pressX = 0;
-  var pressY = 0;
-  var swallowNext = false;
-  var pendingOk = null;
+  var optsRegistry = new Map(); // element id -> opts, set by configure()
 
-  // ── confirmation dialog — event delegation so listeners survive body swaps ──
+  class ConfirmDialog extends HTMLElement {
+    connectedCallback() {
+      this._nameEl = this.querySelector('.confirm-dialog__item-name');
+      this._noAskEl = this.querySelector('.confirm-dialog__no-ask-input');
+      this._resolve = null;
 
-  document.addEventListener('click', function (e) {
-    if (e.target.id === 'delete-confirm-ok') {
-      if (document.getElementById('delete-confirm-no-ask').checked) {
-        localStorage.setItem(SKIP_KEY, '1');
-      }
-      document.getElementById('delete-confirm-backdrop').hidden = true;
-      var cb = pendingOk; pendingOk = null;
-      if (cb) cb();
-    } else if (e.target.id === 'delete-confirm-cancel') {
-      document.getElementById('delete-confirm-backdrop').hidden = true;
-      pendingOk = null;
-    } else if (e.target.id === 'delete-confirm-backdrop') {
-      document.getElementById('delete-confirm-backdrop').hidden = true;
-      pendingOk = null;
+      this._onOk = () => this._settle(true);
+      this._onCancel = () => this._settle(false);
+      this._onBackdrop = (e) => { if (e.target === this) this._settle(false); };
+
+      this.querySelector('.confirm-dialog__ok-btn').addEventListener('click', this._onOk);
+      this.querySelector('.confirm-dialog__cancel-btn').addEventListener('click', this._onCancel);
+      this.addEventListener('click', this._onBackdrop);
     }
-  });
 
-  function showConfirm(name, onOk) {
-    if (localStorage.getItem(SKIP_KEY) === '1') { onOk(); return; }
-    var span = document.getElementById('delete-confirm-item-name');
-    if (span) span.textContent = name;
-    document.getElementById('delete-confirm-no-ask').checked = false;
-    pendingOk = onOk;
-    document.getElementById('delete-confirm-backdrop').hidden = false;
+    disconnectedCallback() {
+      // Don't leave an in-flight caller waiting forever if this instance
+      // is torn down (e.g. mid-confirm, a boosted nav fires) mid-dialog.
+      this._settle(false);
+    }
+
+    /** Returns a Promise<boolean>: true if the user confirmed. */
+    confirm(name) {
+      if (localStorage.getItem(SKIP_KEY) === '1') return Promise.resolve(true);
+      this._nameEl.textContent = name;
+      this._noAskEl.checked = false;
+      this.hidden = false;
+      return new Promise((resolve) => { this._resolve = resolve; });
+    }
+
+    _settle(ok) {
+      if (!this._resolve) return;
+      if (ok && this._noAskEl.checked) localStorage.setItem(SKIP_KEY, '1');
+      this.hidden = true;
+      const resolve = this._resolve;
+      this._resolve = null;
+      resolve(ok);
+    }
   }
 
-  // ── delete mode ──────────────────────────────────────────────────────────
+  class DeleteList extends HTMLElement {
+    connectedCallback() {
+      this._opts = optsRegistry.get(this.id) || {};
+      this._active = false;
+      this._pressTimer = null;
+      this._swallowNext = false;
+      this._pressX = 0;
+      this._pressY = 0;
 
-  function enter(listEl) {
-    if (activeList === listEl) return;
-    if (activeList) activeList.classList.remove('is-delete-mode');
-    activeList = listEl;
-    listEl.classList.add('is-delete-mode');
-    if (navigator.vibrate) navigator.vibrate(25);
-    document.addEventListener('click', onOutside, true);
-  }
+      // Prevent the browser's native context-menu / link-preview on long press.
+      this.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  function exit() {
-    if (!activeList) return;
-    activeList.classList.remove('is-delete-mode');
-    activeList = null;
-    document.removeEventListener('click', onOutside, true);
-  }
+      this.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.delete-mode-btn')) return;
+        if (!e.target.closest('.row[data-id]')) return;
+        this._pressX = e.clientX;
+        this._pressY = e.clientY;
+        this._pressTimer = setTimeout(() => {
+          this._pressTimer = null;
+          this._swallowNext = true; // the pointerup will generate a synthetic click — eat it
+          this._enterDeleteMode();
+        }, LONG_PRESS_MS);
+      });
 
-  function onOutside(e) {
-    if (!activeList) return;
-    var t = e.target;
-    if (t.closest('#delete-confirm-backdrop') || t.closest('.delete-mode-btn')) return;
-    if (!activeList.contains(t)) exit();
-  }
+      const cancelPress = () => {
+        if (this._pressTimer) { clearTimeout(this._pressTimer); this._pressTimer = null; }
+      };
+      this.addEventListener('pointerup', cancelPress);
+      this.addEventListener('pointercancel', cancelPress);
+      this.addEventListener('pointermove', (e) => {
+        if (!this._pressTimer) return;
+        if (Math.abs(e.clientX - this._pressX) > MOVE_PX || Math.abs(e.clientY - this._pressY) > MOVE_PX) {
+          cancelPress();
+        }
+      });
 
-  // ── long-press detection ─────────────────────────────────────────────────
+      // Capture phase so we can preventDefault before <a> navigation fires.
+      this._onOutsideClick = (e) => {
+        if (!this._active) return;
+        const t = e.target;
+        if (t.closest('confirm-dialog') || t.closest('.delete-mode-btn')) return;
+        if (!this.contains(t)) this._exitDeleteMode();
+      };
 
-  function cancelPress() {
-    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  }
+      this.addEventListener('click', (e) => this._handleClick(e), true);
+    }
 
-  // ── attach internals ─────────────────────────────────────────────────────
+    disconnectedCallback() {
+      if (this._active) document.removeEventListener('click', this._onOutsideClick, true);
+    }
 
-  var _registry = [];
+    /** Called once by the page's own script (devices.js/schedules.js). */
+    configure(opts) {
+      optsRegistry.set(this.id, opts);
+      this._opts = opts;
+    }
 
-  function _doAttach(listEl, opts) {
-    if (listEl._lpdAttached) return;
-    listEl._lpdAttached = true;
+    _enterDeleteMode() {
+      if (this._active) return;
+      this._active = true;
+      this.classList.add('is-delete-mode');
+      if (navigator.vibrate) navigator.vibrate(25);
+      document.addEventListener('click', this._onOutsideClick, true);
+    }
 
-    // Prevent the browser's native context-menu / link-preview on long press.
-    listEl.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    _exitDeleteMode() {
+      if (!this._active) return;
+      this._active = false;
+      this.classList.remove('is-delete-mode');
+      document.removeEventListener('click', this._onOutsideClick, true);
+    }
 
-    listEl.addEventListener('pointerdown', function (e) {
-      if (e.target.closest('.delete-mode-btn')) return;
-      if (!e.target.closest('.row[data-id]')) return;
-      pressX = e.clientX;
-      pressY = e.clientY;
-      pressTimer = setTimeout(function () {
-        pressTimer = null;
-        swallowNext = true;   // the pointerup will generate a synthetic click — eat it
-        enter(listEl);
-      }, LONG_PRESS_MS);
-    });
-
-    listEl.addEventListener('pointerup',     cancelPress);
-    listEl.addEventListener('pointercancel', cancelPress);
-    listEl.addEventListener('pointermove', function (e) {
-      if (!pressTimer) return;
-      if (Math.abs(e.clientX - pressX) > MOVE_PX || Math.abs(e.clientY - pressY) > MOVE_PX) {
-        cancelPress();
-      }
-    });
-
-    // Capture phase so we can preventDefault before <a> navigation fires.
-    listEl.addEventListener('click', function (e) {
+    async _handleClick(e) {
       // Eat the click that fires immediately after the long-press timer fires.
-      if (swallowNext) {
-        swallowNext = false;
+      if (this._swallowNext) {
+        this._swallowNext = false;
         e.preventDefault();
         e.stopImmediatePropagation();
         return;
       }
 
-      var deleteBtn = e.target.closest('.delete-mode-btn');
-      if (deleteBtn && activeList === listEl) {
+      const deleteBtn = e.target.closest('.delete-mode-btn');
+      if (deleteBtn && this._active) {
         e.preventDefault();
         e.stopPropagation();
-        var row = deleteBtn.closest('.row[data-id]');
+        const row = deleteBtn.closest('.row[data-id]');
         if (!row) return;
-        var id  = row.dataset.id;
-        var lbl = (opts.getLabel ? opts.getLabel(row) : null)
+        const id = row.dataset.id;
+        const label = (this._opts.getLabel ? this._opts.getLabel(row) : null)
           || (row.querySelector('.row__title') || {}).textContent.trim()
           || 'this item';
-        showConfirm(lbl, async function () {
+
+        const dialog = document.querySelector('confirm-dialog');
+        const ok = await dialog.confirm(label);
+        if (!ok) return;
+
+        // Captured before the delete call, while the item still exists —
+        // opts.restore(snapshot) is what a later "Undo" tap replays.
+        let snapshot = null;
+        if (this._opts.captureForUndo) {
           try {
-            await opts.deleteItem(id);
-            row.remove();
-            if (opts.afterDelete) opts.afterDelete();
-          } catch (err) {
-            toast(formatError(err), { error: true });
+            snapshot = await this._opts.captureForUndo(id);
+          } catch {
+            snapshot = null; // no snapshot, no undo offered — deletion still proceeds
           }
-        });
+        }
+
+        try {
+          await this._opts.deleteItem(id);
+          row.remove();
+          if (this._opts.afterDelete) this._opts.afterDelete();
+          if (snapshot && this._opts.restore) {
+            toastWithAction(`Deleted "${label}"`, "Undo", async () => {
+              try {
+                await this._opts.restore(snapshot);
+                toast(`Restored "${label}"`);
+                if (this._opts.afterRestore) this._opts.afterRestore();
+              } catch (err) {
+                toast(formatError(err), { error: true });
+              }
+            });
+          }
+        } catch (err) {
+          toast(formatError(err), { error: true });
+        }
         return;
       }
 
       // Tapping a card body in delete mode exits the mode without navigating.
-      if (activeList === listEl && e.target.closest('.row[data-id]')) {
+      if (this._active && e.target.closest('.row[data-id]')) {
         e.preventDefault();
-        exit();
+        this._exitDeleteMode();
       }
-    }, true);
+    }
   }
 
-  // Re-attach after htmx boost navigations. This file lives in <head> and runs
-  // once; the registry and this listener survive any number of body swaps.
-  document.addEventListener('htmx:afterSettle', function () {
-    _registry.forEach(function (entry) {
-      var el = entry.id ? document.getElementById(entry.id) : null;
-      if (el && !el._lpdAttached) {
-        _doAttach(el, entry.opts);
-      }
-    });
-  });
+  customElements.define('confirm-dialog', ConfirmDialog);
+  customElements.define('delete-list', DeleteList);
 
-  // ── public attach ────────────────────────────────────────────────────────
-
+  // Kept as the public API so devices.js/schedules.js don't need to change:
+  // attach(el, opts) just forwards to the element's own configure().
   function attach(listEl, opts) {
     if (!listEl) return;
-    _registry.push({ id: listEl.id, opts: opts });
-    _doAttach(listEl, opts);
+    listEl.configure(opts);
   }
 
-  window.LongPressDelete = { attach: attach, exit: exit };
+  window.LongPressDelete = { attach: attach };
 }());
