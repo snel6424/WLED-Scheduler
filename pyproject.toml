@@ -1,6 +1,6 @@
 [project]
 name = "wled-scheduler"
-version = "0.7.0"
+version = "0.7.1"
 description = "A self-hosted scheduler for WLED lights: time and sunrise/sunset triggered presets and states."
 readme = "README.md"
 license = { text = "MIT" }
